@@ -281,7 +281,7 @@ re-add one without being asked.
   (`apiClient`).
 - **Styling** — every color comes from `useTheme()`. Users can override any
   color via the in-app picker.
-- **i18n** — react-i18next, six locales.
+- **i18n** — react-i18next, seven locales.
 - **Deep links** — magnet URLs and `.torrent` files arrive via a `Linking`
   listener in `app/_layout.tsx`. `app/+native-intent.ts` returns `null` for those
   URLs so Expo Router doesn't try to treat a `file://…torrent` path as a route
@@ -535,7 +535,7 @@ label, completion and ETA rules) · `limit-input.ts` (share-limit sentinels:
 `-2` = follow global, `-1` = unlimited; own-vs-effective limit resolution) ·
 `error.ts` (`getErrorMessage`, `isTlsRejection` — recognizes iOS rejecting a
 server's TLS certificate from the free-text error description RN's XHR
-bridge exposes, matched across all six locales since that text is localized
+bridge exposes, matched across all seven locales since that text is localized
 to the device language — #256) · `apiVersion.ts` (parse + `ApiFeatures` gating) ·
 `connection-settings.ts` (`resolveConnectionSettings` — resolves the axios
 connection timeout / retry count from raw stored preferences, falling back to
@@ -591,7 +591,7 @@ base).
 Exact touch-lists for recurring work. Follow them; don't rediscover.
 
 **Add or change a user-facing string**
-Add the key to **all six** `locales/*/translation.json` and use it via `t('ns.key')`.
+Add the key to **all seven** `locales/*/translation.json` and use it via `t('ns.key')`.
 Actually translate — the parity test rejects English copied verbatim into another
 locale (for strings ≥16 chars). `npm test` names any file you missed.
 
