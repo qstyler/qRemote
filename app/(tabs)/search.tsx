@@ -1509,6 +1509,9 @@ export default function SearchScreen() {
                         styles.sortOptionText,
                         { color: isDark ? colors.textSecondary : colors.text },
                       ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.75}
                     >
                       {t('screens.search.hideZeroSeeders')}
                     </Text>
@@ -1539,6 +1542,9 @@ export default function SearchScreen() {
                         styles.sortOptionText,
                         { color: isDark ? colors.textSecondary : colors.text },
                       ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.75}
                     >
                       {t('screens.search.groupDuplicates')}
                     </Text>
@@ -1817,7 +1823,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 54,
     left: spacing.md,
-    minWidth: 200,
+    // Fixed width, not minWidth: with a content-sized width the toggle labels
+    // measured wider than the dropdown, wrapped to two lines, and the last row
+    // got clipped by `overflow: hidden`.
+    width: 300,
+    maxWidth: '100%',
     borderRadius: borderRadius.large,
     borderWidth: 0.5,
     ...shadows.large,
