@@ -19,6 +19,22 @@ export interface ChangelogRelease {
 }
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: '3.8.46',
+    date: '2026-10-04',
+    sections: [
+      {
+        title: 'New Features',
+        items: ['Added Polish language support'],
+      },
+      {
+        title: 'Bugs Fixed',
+        items: [
+          'Fixed the self-signed certificate setting not being remembered after closing the app',
+        ],
+      },
+    ],
+  },
+  {
     version: '3.8.45',
     date: '2026-09-21',
     sections: [
