@@ -477,6 +477,28 @@ export interface Tracker {
   msg: string;
 }
 
+/**
+ * Identifiers carried by a torrents/fetchMetadata response (qBit 5.2+ / WebAPI ≥ 2.11.9).
+ * Each is omitted when the server sent nothing or an empty string (a v1-only torrent
+ * has no v2 hash and vice versa).
+ */
+export interface TorrentMetadataIds {
+  /** `infohash_v1` — the SHA-1 info hash; what a magnet's `xt=urn:btih:` carries. */
+  infohashV1?: string;
+  /** `infohash_v2` — the SHA-256 info hash of a v2/hybrid torrent. */
+  infohashV2?: string;
+  /** `hash` — the torrent ID qBittorrent keys its own endpoints by (v1 hash, or the truncated v2 hash). */
+  hash?: string;
+}
+
+/**
+ * Outcome of one torrents/fetchMetadata call. The endpoint reports progress through the
+ * HTTP status: 202 while the metadata is still being downloaded, 200 once it is available.
+ */
+export type TorrentMetadataResult =
+  | ({ status: 'pending' } & TorrentMetadataIds)
+  | ({ status: 'ready'; trackers: string[] } & TorrentMetadataIds);
+
 export interface WebSeed {
   url: string;
 }

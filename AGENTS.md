@@ -355,7 +355,7 @@ Complete map. Trust it.
 | Path | Notes |
 |---|---|
 | `app/(tabs)/(torrents)/` | Torrents tab as a nested stack: `index` list, `torrent/[hash]`, `torrent/files`, `torrent/manage-trackers`. Group is omitted from URLs → `/`, `/torrent/[hash]`. |
-| `app/(tabs)/search.tsx` | Search tab: job polling UI, plugin/category/indexer filter chips, client-side sort (keys: seeders/leechers/size/name/date/quality — Quality, #268, ranks by the resolution in the release name via `utils/video-quality.ts` and keeps unknown-quality results last in both directions; the sort dropdown also hosts the persisted "Hide zero seeders" toggle, `searchHideZeroSeeders` pref), a funnel-button filter panel (`components/SearchFilterPanel.tsx`: "Search in" names-only/everywhere — persisted `searchInMode` pref — plus session-only text, seeders and size filters, WebUI parity, #266), collapsing header. Result pipeline in `sortedResults`: dedupe → tracker chips → panel filters → hide zero seeders → sort; "names only" matches the last *submitted* pattern, not the live query box. Optional auto-tag-by-tracker on add (`autoCategorizeByTracker` pref — tags Search downloads only; the key name is historical). |
+| `app/(tabs)/search.tsx` | Search tab: job polling UI, plugin/category/indexer filter chips, client-side sort (keys: seeders/leechers/size/name/date/quality — Quality, #268, ranks by the resolution in the release name via `utils/video-quality.ts` and keeps unknown-quality results last in both directions; the sort dropdown also hosts the persisted "Hide zero seeders" toggle, `searchHideZeroSeeders` pref, and the persisted "Group duplicates" toggle, `searchGroupDuplicates` pref, default **on** — #267), a funnel-button filter panel (`components/SearchFilterPanel.tsx`: "Search in" names-only/everywhere — persisted `searchInMode` pref — plus session-only text, seeders and size filters, WebUI parity, #266), collapsing header. Result pipeline (`filteredResults` → `listItems`): dedupe → tracker chips → panel filters → hide zero seeders → group duplicates → sort by each group's primary (with grouping off every result is a group of one, so the list is exactly as before). Grouping (#267) collapses results that look like one torrent — same magnet `btih`, or same normalized name + exact size, confirmed on qBit 5.2+ by resolving duplicate-looking `.torrent` links through `torrents/fetchMetadata` — into one `SearchResultGroupRow`; the row's `+` adds the whole group (one merged magnet carrying every source's trackers, or the primary `.torrent` plus an `addTrackers` top-up once the torrent exists), a source's own `+` adds only that source. "names only" matches the last *submitted* pattern, not the live query box. Optional auto-tag-by-tracker on add (`autoCategorizeByTracker` pref — tags Search downloads only; the key name is historical). |
 | `app/(tabs)/transfer.tsx` | Transfer stats, global speed and seeding limits. |
 | `app/(tabs)/logs.tsx` | qBittorrent's own server-side application + peer log viewer (`logs/main`, `logs/peers` via `services/api/logs.ts`) — needs a live connection, shows a "not connected" placeholder otherwise. `href: null` — reached from Settings → Advanced ("Server Logs" row), not a visible tab. Not the app's own connectivity/diagnostic log — see `components/LogViewer.tsx` for that. |
 | `app/(tabs)/rss/` | RSS Feeds tab (`index` tree + `feed` detail). `href` is null until connected **and** the server's `rss_processing_enabled` is on. Rules and settings screens do **not** go here — they live under Settings. |
@@ -462,8 +462,11 @@ All PascalCase function components taking a `…Props` interface.
   silently stops updating; category/tag stickers use `categoryColors`/`tagColors`
   then defaults then the `avatarColor` fallback), `SearchResultRow` (+ internal
   ActionPill; the `+` button and the cart-toggle button are independent — see
-  its header comment), `FilterChip`, `EmptyState`, `SkeletonLoader`
-  (+ `SkeletonTorrentCard`, `SkeletonTorrentDetail` — the latter covers the
+  its header comment; takes an optional `footer` node), `SearchResultGroupRow`
+  (#267 — one list row for a `SearchResultGroup`: a group of one is the plain
+  `SearchResultRow`, a group of 2+ is its primary plus an "N sources" toggle and
+  compact per-source add/cart rows in the card's `footer`), `FilterChip`,
+  `EmptyState`, `SkeletonLoader` (+ `SkeletonTorrentCard`, `SkeletonTorrentDetail` — the latter covers the
   detail screen while a dead session reconnects), `PieceMap`,
   `ServerIconBadge` (per-server tinted
   icon badge — `ServerConfig.icon`/`iconColor` via `utils/server.ts`
@@ -495,7 +498,8 @@ Thin objects over `apiClient`.
 - **`client.ts`** — the axios singleton. Holds server config, cookies, API
   version and the Basic Auth header, and normalizes HTTP failures into
   human-readable `Error`s. **Callers substring-match those messages — grep
-  before rewording one.**
+  before rewording one.** `postUrlEncodedWithStatus` is `postUrlEncoded` plus the
+  2xx status, for endpoints that signal progress with 202 vs 200.
 - `auth.ts` (login/logout) · `sync.ts` (`getMainData` rid-sync, `getTorrentPeers`) ·
   `transfer.ts` (global speed + seeding limits, alt-speed toggle, `banPeers`) ·
   `application.ts` (version/buildInfo/preferences/cookies, `getDirectoryContent`) ·
@@ -506,7 +510,9 @@ Thin objects over `apiClient`.
   contents/pieces; pause/resume/delete/recheck/reannounce; add (URL + file);
   tracker and peer edits; queue and file priorities; limits and share-limits;
   location/name/category/tags; AMM, sequential, first/last piece, force start,
-  super seeding; `renameFile`/`renameFolder`.
+  super seeding; `renameFile`/`renameFolder`; `fetchMetadata` (qBit 5.2+ /
+  WebAPI ≥ 2.11.9, `ApiFeatures.supportsFetchMetadata` — resolve a URL/magnet to
+  info hash + trackers without adding it; 202 = still downloading, 200 = ready).
 
 ### Services (`services/`)
 
@@ -522,6 +528,11 @@ Thin objects over `apiClient`.
 - **`color-theme-manager.ts`** — save/load/apply user color themes.
 - **`connectivity-log.ts`** — in-memory ring log (`clogDebug/Info/Warn/Error(tag, msg)`),
   displayed by `components/LogViewer.tsx`.
+- **`search-tracker-topup.ts`** — #267: after a Search group of `.torrent` links is
+  added, waits (up to ~3 min, abortable) for the torrent to appear by ID and calls
+  `addTrackers` with the other sources' trackers. `prepareTrackerTopUp` first checks
+  the client doesn't already have the torrent; everything is silent best-effort.
+  Also exports `abortableDelay`, shared with `search.tsx`'s auto-tag poll.
 
 ### Native modules (`modules/`)
 
@@ -548,6 +559,13 @@ Thin objects over `apiClient`.
 
 - `useSearchJob.ts` — search job lifecycle: start/stop/delete, 2s status+results
   polling, unmount cleanup.
+- `useSearchHashResolver.ts` — #267: for Search results that look like duplicates,
+  asks `torrents/fetchMetadata` (qBit 5.2+) for the `.torrent` links' info hash +
+  trackers, returning `fileUrl → ResolvedSource` for `groupSearchResults`. Politely
+  capped: 3 in flight, 30 per search job (most-seeded first), re-poll a 202 every 2s
+  up to 5 calls, errors are silent, nothing is requested twice, and a new job or
+  unmount aborts and ignores stale replies. `downloader=<engineName>` only when
+  supported and the source isn't an aggregator (Prowlarr/Jackett).
 - `useTorrentActions.ts` — builds the per-torrent action menu for the **list
   screen only**. Delete exposes `deleteConfirmVisible` for a caller-mounted
   `ConfirmModal`. The **detail screen does not use this hook** — it hand-rolls
@@ -599,7 +617,14 @@ accent folding, same as WebUI `containsAllTerms`), seeders and size ranges
 `-1`/`0` values are *kept* by a range). Also `tokenizeTerms`,
 `parseSizeInput`/`parseSeedersInput`, `hasActiveFilters`, and the
 `SearchFilterDraft` ⇄ options helpers behind `SearchFilterPanel`. Runs before
-the sort in `search.tsx`) · `video-quality.ts` (`getVideoQualityRank(fileName)` —
+the sort in `search.tsx`) · `search-grouping.ts` (#267 — pure Search-result
+grouping: `extractBtih` (hex or base32 magnet hash → lowercase hex),
+`normalizeName`/`nameSizeKey`,
+`findResolutionCandidates` (duplicate-looking `.torrent` links worth resolving),
+`groupSearchResults(results, resolved)` → `SearchResultGroup[]` (primary = most
+seeders; known hashes always win over the name+size guess, so two different hashes
+never merge), `mergeMagnets` (union of `tr=`), `planGroupAdd`/`collectGroupTrackers`
+(how adding a group works)) · `video-quality.ts` (`getVideoQualityRank(fileName)` —
 resolution rank parsed from a release name by whole alphanumeric token: 2160p/4K/UHD
 = 4, 1440p = 3.5, 1080p/1080i/FHD = 3, 720p = 2, 576p–240p/SD/DVD = 1, unknown = 0;
 never reads `x264`/`h264` or a bare `1080`/year as a resolution, and deliberately
@@ -855,6 +880,16 @@ Keep entries factual and current; if you find one that's no longer true
   parameter "works" in the UI but has no visible server-side effect, check it
   against qBittorrent's `torrentscontroller.cpp` source, not the wiki — the
   wiki is not reliably kept in sync with parameter renames.
+- **`torrents/fetchMetadata` (qBit 5.2+) is easy to misread.** HTTP status is
+  the progress signal: **202** = still working, **200** = ready. For an http(s)
+  URL the *first* call only queues the download (202, body `{}`); call again with
+  the same `source` until 200 or an error. The torrent ID in the body is `hash`
+  (not `id`), alongside `infohash_v1` / `infohash_v2` (empty string when absent)
+  and `trackers` as `{url, tier}` objects. The server percent-decodes `source` a
+  second time, so `torrentsApi.fetchMetadata` pre-encodes it. Search results
+  carry no hash at all (only a magnet `fileUrl` reveals one), which is why the
+  Search grouping resolves candidates instead of reading a field. Source:
+  `torrentscontroller.cpp` `fetchMetadataAction` — it is not in the 5.0 or 4.1 wikis.
 - **A feature backed by a local Expo native module (`modules/*`) can be
   rendered by an OTA update on a binary that predates that module, and the
   JS wrapper no-ops silently instead of erroring.** OTA JS updates ship

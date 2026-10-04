@@ -30,6 +30,7 @@ export const CHANGELOG: ChangelogRelease[] = [
           'Added a qui Proxy connection option for servers managed by qui',
           'Added search result filters: names only, text filter, seeders and size ranges',
           'Added sorting search results by video quality',
+          'Added grouping of duplicate search results from different indexers',
         ],
       },
       {

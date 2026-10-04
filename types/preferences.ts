@@ -173,6 +173,13 @@ export interface AppPreferences {
   searchHideZeroSeeders?: boolean;
 
   /**
+   * Search tab: collapse results that look like the same torrent (same info hash,
+   * or same name and size) into one expandable row (#267). Absent is treated as
+   * on, so the default is applied to existing users too.
+   */
+  searchGroupDuplicates?: boolean;
+
+  /**
    * Search tab "Search in" default (#266). Absent is treated as 'everywhere',
    * so existing users see no change.
    */
@@ -261,6 +268,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   lastSearchPlugin: 'all',
   lastSearchCategory: 'all',
   searchHideZeroSeeders: false,
+  searchGroupDuplicates: true,
   searchInMode: 'everywhere',
   lastCategoryFilter: null,
   lastTagFilters: [],

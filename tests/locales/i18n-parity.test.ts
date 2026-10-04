@@ -93,6 +93,9 @@ const COINCIDENTAL_MATCH_ALLOWLIST = new Set<string>([
   // "Experimental" is spelled identically in Spanish — a genuine cognate,
   // not an untranslated leftover.
   'screens.settings.i2pSection',
+  // "source" is spelled identically in French — a genuine cognate (#267).
+  'screens.search.sourcesCount_one',
+  'screens.search.sourcesCount_other',
 ]);
 
 /**

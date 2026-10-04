@@ -446,6 +446,20 @@ class ApiClient {
     data: Record<string, string | number | boolean>,
     signal?: AbortSignal,
   ): Promise<unknown> {
+    return (await this.postUrlEncodedWithStatus(url, data, signal)).data;
+  }
+
+  /**
+   * Same request as `postUrlEncoded`, but also reports the HTTP status of the
+   * 2xx response. Needed by the few endpoints that signal progress through the
+   * status code rather than the body — e.g. torrents/fetchMetadata answers 202
+   * while a download is still in flight and 200 once it has the metadata.
+   */
+  async postUrlEncodedWithStatus(
+    url: string,
+    data: Record<string, string | number | boolean>,
+    signal?: AbortSignal,
+  ): Promise<{ data: unknown; status: number }> {
     // Check server is configured (interceptor will also check, but fail early with better error)
     if (!this.currentServer) {
       throw new Error('No server configured. Please connect to a server first.');
@@ -465,7 +479,7 @@ class ApiClient {
     const response = await this.client.post(url, body, {
       signal: signal ?? this.sessionController.signal,
     });
-    return response.data;
+    return { data: response.data, status: response.status };
   }
 
   private isRetriableError(error: unknown): boolean {
