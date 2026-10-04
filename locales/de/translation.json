@@ -582,6 +582,7 @@
       "sortSize": "Size",
       "sortName": "Name",
       "sortDate": "Date",
+      "sortQuality": "Qualität",
       "categoryLabel": "Kategorie",
       "indexerLabel": "Indexer",
       "allTrackers": "Alle Indexer",

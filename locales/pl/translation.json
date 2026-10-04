@@ -605,6 +605,7 @@
       "sortSize": "Rozmiar",
       "sortName": "Nazwa",
       "sortDate": "Data",
+      "sortQuality": "Jakość",
       "categoryLabel": "Kategoria",
       "indexerLabel": "Indekser",
       "allTrackers": "Wszystkie indeksery",

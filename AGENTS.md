@@ -355,7 +355,7 @@ Complete map. Trust it.
 | Path | Notes |
 |---|---|
 | `app/(tabs)/(torrents)/` | Torrents tab as a nested stack: `index` list, `torrent/[hash]`, `torrent/files`, `torrent/manage-trackers`. Group is omitted from URLs → `/`, `/torrent/[hash]`. |
-| `app/(tabs)/search.tsx` | Search tab: job polling UI, plugin/category/indexer filter chips, client-side sort (the sort dropdown also hosts the persisted "Hide zero seeders" toggle, `searchHideZeroSeeders` pref), a funnel-button filter panel (`components/SearchFilterPanel.tsx`: "Search in" names-only/everywhere — persisted `searchInMode` pref — plus session-only text, seeders and size filters, WebUI parity, #266), collapsing header. Result pipeline in `sortedResults`: dedupe → tracker chips → panel filters → hide zero seeders → sort; "names only" matches the last *submitted* pattern, not the live query box. Optional auto-tag-by-tracker on add (`autoCategorizeByTracker` pref — tags Search downloads only; the key name is historical). |
+| `app/(tabs)/search.tsx` | Search tab: job polling UI, plugin/category/indexer filter chips, client-side sort (keys: seeders/leechers/size/name/date/quality — Quality, #268, ranks by the resolution in the release name via `utils/video-quality.ts` and keeps unknown-quality results last in both directions; the sort dropdown also hosts the persisted "Hide zero seeders" toggle, `searchHideZeroSeeders` pref), a funnel-button filter panel (`components/SearchFilterPanel.tsx`: "Search in" names-only/everywhere — persisted `searchInMode` pref — plus session-only text, seeders and size filters, WebUI parity, #266), collapsing header. Result pipeline in `sortedResults`: dedupe → tracker chips → panel filters → hide zero seeders → sort; "names only" matches the last *submitted* pattern, not the live query box. Optional auto-tag-by-tracker on add (`autoCategorizeByTracker` pref — tags Search downloads only; the key name is historical). |
 | `app/(tabs)/transfer.tsx` | Transfer stats, global speed and seeding limits. |
 | `app/(tabs)/logs.tsx` | qBittorrent's own server-side application + peer log viewer (`logs/main`, `logs/peers` via `services/api/logs.ts`) — needs a live connection, shows a "not connected" placeholder otherwise. `href: null` — reached from Settings → Advanced ("Server Logs" row), not a visible tab. Not the app's own connectivity/diagnostic log — see `components/LogViewer.tsx` for that. |
 | `app/(tabs)/rss/` | RSS Feeds tab (`index` tree + `feed` detail). `href` is null until connected **and** the server's `rss_processing_enabled` is on. Rules and settings screens do **not** go here — they live under Settings. |
@@ -599,7 +599,14 @@ accent folding, same as WebUI `containsAllTerms`), seeders and size ranges
 `-1`/`0` values are *kept* by a range). Also `tokenizeTerms`,
 `parseSizeInput`/`parseSeedersInput`, `hasActiveFilters`, and the
 `SearchFilterDraft` ⇄ options helpers behind `SearchFilterPanel`. Runs before
-the sort in `search.tsx`) · `login-response.ts` (qBittorrent login body/cookie interpretation) ·
+the sort in `search.tsx`) · `video-quality.ts` (`getVideoQualityRank(fileName)` —
+resolution rank parsed from a release name by whole alphanumeric token: 2160p/4K/UHD
+= 4, 1440p = 3.5, 1080p/1080i/FHD = 3, 720p = 2, 576p–240p/SD/DVD = 1, unknown = 0;
+never reads `x264`/`h264` or a bare `1080`/year as a resolution, and deliberately
+skips ambiguous "2K". `getVideoQualityLabel(rank)` for display, and
+`compareByQuality(a, b, dir)` — the Search "Quality" sort comparator: unknown
+last in *both* directions, ties by seeders desc with `-1` as 0 — #268) ·
+`login-response.ts` (qBittorrent login body/cookie interpretation) ·
 `haptics.ts` (global toggle + wrappers) · `tags.ts` (CSV tag parsing) ·
 `add-torrent-dialogue.ts` (compact vs full variant, plus `getSearchAddOpensDialogue`
 for the Search tab's `+` behavior — #217) · `search-cart.ts`

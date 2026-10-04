@@ -29,6 +29,7 @@ export const CHANGELOG: ChangelogRelease[] = [
           'Added a "Hide zero seeders" option to search results',
           'Added a qui Proxy connection option for servers managed by qui',
           'Added search result filters: names only, text filter, seeders and size ranges',
+          'Added sorting search results by video quality',
         ],
       },
       {

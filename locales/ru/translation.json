@@ -603,6 +603,7 @@
       "sortSize": "Size",
       "sortName": "Name",
       "sortDate": "Date",
+      "sortQuality": "Качество",
       "categoryLabel": "Категория",
       "indexerLabel": "Индексатор",
       "allTrackers": "Все индексаторы",

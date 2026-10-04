@@ -69,11 +69,12 @@ import { typography } from '@/constants/typography';
 import { buttonStyles, buttonText } from '@/constants/buttons';
 import { getErrorMessage } from '@/utils/error';
 import { haptics } from '@/utils/haptics';
+import { compareByQuality } from '@/utils/video-quality';
 
 const ALL = 'all';
 const ENABLED = 'enabled';
 
-type SortKey = 'seeders' | 'size' | 'name' | 'leechers' | 'date';
+type SortKey = 'seeders' | 'size' | 'name' | 'leechers' | 'date' | 'quality';
 
 const SORT_OPTIONS: Array<{
   key: SortKey;
@@ -85,6 +86,7 @@ const SORT_OPTIONS: Array<{
   { key: 'size', labelKey: 'screens.search.sortSize', icon: 'cube-outline' },
   { key: 'name', labelKey: 'screens.search.sortName', icon: 'text-outline' },
   { key: 'date', labelKey: 'screens.search.sortDate', icon: 'calendar-outline' },
+  { key: 'quality', labelKey: 'screens.search.sortQuality', icon: 'film-outline' },
 ];
 
 const TAG_MATCH_ATTEMPTS = 8;
@@ -444,6 +446,9 @@ export default function SearchScreen() {
       ...filterSearchResults(trackerFiltered, { ...contentFilterOptions, hideZeroSeeders }),
     ];
     filtered.sort((a, b) => {
+      // Quality (#268) keeps unknown-quality results last in BOTH directions,
+      // so it can't use the negate-for-desc scheme below.
+      if (sortBy === 'quality') return compareByQuality(a, b, sortDirection);
       let cmp = 0;
       switch (sortBy) {
         case 'seeders':

@@ -582,6 +582,7 @@
       "sortSize": "Size",
       "sortName": "Name",
       "sortDate": "Date",
+      "sortQuality": "画质",
       "categoryLabel": "分类",
       "indexerLabel": "索引器",
       "allTrackers": "所有索引器",
