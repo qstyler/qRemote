@@ -115,6 +115,22 @@ describe('storageService', () => {
       expect(raw[0].apiKey).toBe('');
     });
 
+    it('persists allowInsecureCert across save and reload (#256)', async () => {
+      // The write map lists fields explicitly; this flag was once omitted,
+      // so it held for the session and was gone on the next cold launch.
+      await storageService.saveServer(makeServer({ allowInsecureCert: true }));
+      const raw = JSON.parse(mockAsyncStorage['servers']);
+      expect(raw[0].allowInsecureCert).toBe(true);
+      const servers = await storageService.getServers();
+      expect(servers[0].allowInsecureCert).toBe(true);
+    });
+
+    it('defaults allowInsecureCert to false when unset', async () => {
+      await storageService.saveServer(makeServer());
+      const servers = await storageService.getServers();
+      expect(servers[0].allowInsecureCert).toBe(false);
+    });
+
     it('persists customHeaders separately, storing them in SecureStore', async () => {
       await storageService.saveServer(
         makeServer({

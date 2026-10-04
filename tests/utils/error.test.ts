@@ -51,6 +51,37 @@ describe('isTlsRejection', () => {
     expect(isTlsRejection(err)).toBe(true);
   });
 
+  it('reads error.request.responseText when .response is blank — the shape RN actually produces on error (#256)', () => {
+    // RN's XMLHttpRequest returns '' from `.response` once `_hasError` is set,
+    // but `.responseText` still returns the stashed native description. The
+    // shipped detector only read `.response`, so a real on-device rejection
+    // fell through to the generic "Connection timeout" message.
+    const err = {
+      message: 'Network Error',
+      request: {
+        response: '',
+        responseText:
+          'The certificate for this server is invalid. You might be connecting to a server that is pretending to be "192.168.1.106" which could put your confidential information at risk.',
+      },
+    };
+    expect(isTlsRejection(err)).toBe(true);
+  });
+
+  it('falls back to .response when the .responseText getter throws (non-text responseType)', () => {
+    const err = {
+      message: 'Network Error',
+      request: {
+        get responseText(): string {
+          throw new Error(
+            "The 'responseText' property is only available if 'responseType' is set to '' or 'text'",
+          );
+        },
+        response: 'The certificate for this server is invalid.',
+      },
+    };
+    expect(isTlsRejection(err)).toBe(true);
+  });
+
   it('recognizes a non-English (Spanish) description, since the text is localized (#256)', () => {
     const err = {
       message: 'Network Error',

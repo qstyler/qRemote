@@ -56,6 +56,12 @@ export const storageService = {
       // API key auth (key stored separately in SecureStore)
       useApiKey: s.useApiKey || false,
       apiKey: '', // Don't store API key in AsyncStorage
+      // Self-signed cert opt-in (#206). This map enumerates fields explicitly
+      // to keep secrets out of AsyncStorage, so a flag added later is silently
+      // dropped unless listed here — which is exactly what happened to this
+      // one (#256): it survived in memory for the session, then vanished on
+      // every cold launch and the native TLS allowlist came up empty.
+      allowInsecureCert: s.allowInsecureCert || false,
       // Custom headers (#228) — values are treated as secrets, stored separately in SecureStore
       useCustomHeaders: s.useCustomHeaders || false,
       customHeaders: [],

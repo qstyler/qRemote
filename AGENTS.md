@@ -816,3 +816,21 @@ Keep entries factual and current; if you find one that's no longer true
   (issue #256). The app's real diagnostic trail (`services/connectivity-log.ts`)
   was never wired to any screen; it's now shown by `components/LogViewer.tsx`,
   opened from its own "View Connectivity Logs" row in Settings → Advanced.
+- **`services/storage.ts`'s `saveServer` persists servers through an explicit
+  field-by-field map (to keep secrets out of AsyncStorage), so any new
+  `ServerConfig` field is silently dropped on save unless it's added to that
+  map.** `allowInsecureCert` (#206) was missing from it for two months (#256):
+  the toggle "worked" for the session because the in-memory object still had
+  it, then came back OFF on every cold launch and the native TLS allowlist
+  was fed an empty list — a 46ms `ERR_NETWORK` that reported as "Connection
+  timeout". Every layer above (sync calls, native store, host matching) was
+  verified correct twice before anyone read the serializer. When adding a
+  `ServerConfig` field: add it to this map and to `tests/services/storage.test.ts`'s
+  save→reload round-trip in the same change.
+- **RN's `XMLHttpRequest.response` returns `''` once `_hasError` is set;
+  only `.responseText` still carries the native error description.** Any
+  code sniffing the text of a failed request (`utils/error.ts`
+  `extractErrorText`) must read `.responseText` (it throws for non-text
+  `responseType`, so guard it). Tests that mock `request.response` directly
+  pass while the real path silently sees nothing — mock the RN shape
+  (`response: ''`, `responseText: '…'`) instead.

@@ -40,6 +40,7 @@ const TLS_REJECTION_KEYWORDS = [
   'certificat', // fr
   'zertifikat', // de
   'сертификат', // ru
+  'certyfikat', // pl
 ];
 
 /**
@@ -49,15 +50,28 @@ const TLS_REJECTION_KEYWORDS = [
  * is not on the error at all, but React Native's XHR bridge stashes it in
  * the response body on error instead of forwarding the NSURLErrorDomain
  * code (see XMLHttpRequest.js / RCTNetworking.mm). Axios attaches that XHR
- * as `error.request` and leaves `error.request.response` holding that text
- * for a non-JSON request, so that's checked first; `.message` is the
- * fallback for callers that don't go through axios's XHR adapter.
+ * as `error.request`. On error RN blanks `.response` but keeps the text on
+ * `.responseText`, so that is checked first, then `.response`; `.message`
+ * is the fallback for callers that don't go through axios's XHR adapter.
  */
 function extractErrorText(error: unknown): string {
   if (!error || typeof error !== 'object') return '';
-  const request = (error as { request?: { response?: unknown } }).request;
-  const responseText = request && typeof request.response === 'string' ? request.response : '';
-  if (responseText) return responseText;
+  const request = (error as { request?: { response?: unknown; responseText?: unknown } }).request;
+  // React Native's XHR deliberately returns '' from `.response` once
+  // `_hasError` is set — i.e. on exactly the failures this function exists
+  // to inspect — but `.responseText` still returns the stashed native
+  // description. Read that first. It throws when responseType isn't
+  // ''/'text', so guard the access.
+  let nativeText = '';
+  if (request) {
+    try {
+      if (typeof request.responseText === 'string') nativeText = request.responseText;
+    } catch {
+      // responseType was set to something non-text; fall through.
+    }
+    if (!nativeText && typeof request.response === 'string') nativeText = request.response;
+  }
+  if (nativeText) return nativeText;
   const message = (error as { message?: unknown }).message;
   return typeof message === 'string' ? message : '';
 }
