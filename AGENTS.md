@@ -661,7 +661,7 @@ base).
   by `TorrentContext` and `TransferContext` for their quick-app-switch gate).
   **Use these tokens; don't invent ad-hoc spacing.**
 - `i18n/index.ts` initializes react-i18next. Each locale is ONE file,
-  `locales/{en,es,zh,fr,de,ru}/translation.json`, holding every namespace:
+  `locales/{en,es,zh,fr,de,ru,pl}/translation.json`, holding every namespace:
   `common`, `states`, `screens`, `placeholders`, `actions`, `alerts`, `server`,
   `torrentDetail`, `filters`, `sort`, `toast`, `errors`. Keys read like
   `t('actions.pause')`.
