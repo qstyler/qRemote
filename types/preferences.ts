@@ -160,6 +160,12 @@ export interface AppPreferences {
   lastSearchCategory?: string;
 
   /**
+   * Search tab: hide results that report exactly 0 seeders. Only an explicit 0
+   * is hidden — qBittorrent uses -1 for "unknown", which stays visible.
+   */
+  searchHideZeroSeeders?: boolean;
+
+  /**
    * Last active category filter on the torrents tab.
    * null = All categories; '' = Uncategorized (torrents with no category set).
    */
@@ -241,6 +247,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   expandedCardGridColumns: 4,
   lastSearchPlugin: 'all',
   lastSearchCategory: 'all',
+  searchHideZeroSeeders: false,
   lastCategoryFilter: null,
   lastTagFilters: [],
 };

@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
+  Switch,
   Linking,
   Share,
   Keyboard,
@@ -47,6 +48,7 @@ import { storageService } from '@/services/storage';
 import { clogDebug, clogWarn } from '@/services/connectivity-log';
 import { SearchPlugin, SearchResult } from '@/types/api';
 import { siteHost, resultTrackerLabel } from '@/utils/searchResult';
+import { filterSearchResults } from '@/utils/search-filters';
 import {
   getAddTorrentDialogueVariant,
   getSearchAddOpensDialogue,
@@ -240,6 +242,7 @@ export default function SearchScreen() {
   const [sortBy, setSortBy] = useState<SortKey>('seeders');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [hideZeroSeeders, setHideZeroSeeders] = useState(false);
   const [pendingAddUrl, setPendingAddUrl] = useState<string | null>(null);
   const [actionResult, setActionResult] = useState<SearchResult | null>(null);
 
@@ -250,16 +253,18 @@ export default function SearchScreen() {
     [features.supportsSearchPubDate],
   );
 
-  // Load remembered plugin/category once at mount. The query text itself is
-  // deliberately NOT restored — it should reset on a fresh app launch, and
-  // React state already keeps it intact when just switching tabs within the
-  // same running session (this screen stays mounted, it doesn't remount).
+  // Load remembered plugin/category/zero-seeder filter once at mount. The
+  // query text itself is deliberately NOT restored — it should reset on a
+  // fresh app launch, and React state already keeps it intact when just
+  // switching tabs within the same running session (this screen stays
+  // mounted, it doesn't remount).
   useEffect(() => {
     (async () => {
       try {
         const prefs = await storageService.getPreferences();
         if (prefs.lastSearchPlugin) setPlugin(prefs.lastSearchPlugin);
         if (prefs.lastSearchCategory) setCategory(prefs.lastSearchCategory);
+        if (prefs.searchHideZeroSeeders) setHideZeroSeeders(true);
       } catch {
         // ignore — defaults are fine
       }
@@ -385,10 +390,13 @@ export default function SearchScreen() {
       return true;
     });
     // Empty selection means "no tracker filter" — show everything.
-    const filtered =
+    const trackerFiltered =
       selectedTrackers.size === 0
         ? deduped
         : deduped.filter((r) => selectedTrackers.has(resultTrackerLabel(r, isAggregatedSource)));
+    // Filter before sorting. filterSearchResults may hand back the same array,
+    // so copy before the in-place sort.
+    const filtered = [...filterSearchResults(trackerFiltered, { hideZeroSeeders })];
     filtered.sort((a, b) => {
       let cmp = 0;
       switch (sortBy) {
@@ -418,7 +426,28 @@ export default function SearchScreen() {
       return sortDirection === 'asc' ? cmp : -cmp;
     });
     return filtered;
-  }, [results, selectedTrackers, isAggregatedSource, sortBy, sortDirection]);
+  }, [results, selectedTrackers, isAggregatedSource, sortBy, sortDirection, hideZeroSeeders]);
+
+  // Header count: `total` is the server's raw count, so with the zero-seeder
+  // filter on, subtract the loaded results it hides. (Computed from `results`
+  // rather than sortedResults so the tracker filter keeps not affecting it.)
+  const visibleTotal = useMemo(() => {
+    if (!hideZeroSeeders) return total;
+    const hidden = results.length - filterSearchResults(results, { hideZeroSeeders }).length;
+    return Math.max(0, total - hidden);
+  }, [results, total, hideZeroSeeders]);
+
+  const handleToggleHideZeroSeeders = useCallback(async (value: boolean) => {
+    haptics.light();
+    setHideZeroSeeders(value);
+    try {
+      const prefs = await storageService.getPreferences();
+      await storageService.savePreferences({ ...prefs, searchHideZeroSeeders: value });
+    } catch (err: unknown) {
+      // The in-memory toggle still works; only persistence across launches is lost.
+      clogWarn('SEARCH', `Failed to save hide-zero-seeders preference: ${getErrorMessage(err)}`);
+    }
+  }, []);
 
   // The FlatList unmounts whenever the (filtered) result set is empty — the
   // empty state has no scrollable surface, so no onScroll event could ever
@@ -789,6 +818,27 @@ export default function SearchScreen() {
         />
       );
     }
+    if (results.length > 0 && hideZeroSeeders) {
+      // Raw results exist, but the zero-seeder filter hides every one of them.
+      // If a tracker filter is also active, only claim this when some result
+      // actually matches it — otherwise the tracker filter is the culprit and
+      // the branch below explains it.
+      const trackerMatches =
+        selectedTrackers.size === 0 ||
+        results.some((r) => selectedTrackers.has(resultTrackerLabel(r, isAggregatedSource)));
+      if (trackerMatches) {
+        return (
+          <EmptyState
+            style={{ backgroundColor: colors.background }}
+            icon="eye-off-outline"
+            title={t('screens.search.allResultsZeroSeeders')}
+            actionLabel={t('screens.search.showAllResults')}
+            actionIcon="eye-outline"
+            onAction={() => void handleToggleHideZeroSeeders(false)}
+          />
+        );
+      }
+    }
     if (results.length > 0 && selectedTrackers.size > 0) {
       // Raw results exist, but the tracker filter excludes all of them.
       return (
@@ -1061,14 +1111,14 @@ export default function SearchScreen() {
                       <>
                         <ActivityIndicator size="small" color={colors.primary} />
                         <Text style={[styles.statusBannerText, { color: colors.textSecondary }]}>
-                          {t('screens.search.runningCount', { count: total })}
+                          {t('screens.search.runningCount', { count: visibleTotal })}
                         </Text>
                       </>
                     ) : (
                       <>
                         <Ionicons name="checkmark-circle" size={16} color={colors.success} />
                         <Text style={[styles.statusBannerText, { color: colors.textSecondary }]}>
-                          {t('screens.search.foundCount', { count: total })}
+                          {t('screens.search.foundCount', { count: visibleTotal })}
                         </Text>
                       </>
                     )}
@@ -1165,6 +1215,37 @@ export default function SearchScreen() {
                       </TouchableOpacity>
                     );
                   })}
+                  <View style={[styles.sortDivider, { backgroundColor: colors.surfaceOutline }]} />
+                  {/* Filter toggle — deliberately does not close the menu. */}
+                  <TouchableOpacity
+                    style={styles.sortToggleRow}
+                    onPress={() => void handleToggleHideZeroSeeders(!hideZeroSeeders)}
+                    activeOpacity={0.7}
+                    accessible={false}
+                  >
+                    <Ionicons
+                      name="eye-off-outline"
+                      size={18}
+                      color={isDark ? colors.textSecondary : colors.text}
+                    />
+                    <Text
+                      style={[
+                        styles.sortOptionText,
+                        { color: isDark ? colors.textSecondary : colors.text },
+                      ]}
+                    >
+                      {t('screens.search.hideZeroSeeders')}
+                    </Text>
+                    <Switch
+                      value={hideZeroSeeders}
+                      onValueChange={(value) => void handleToggleHideZeroSeeders(value)}
+                      trackColor={{ false: colors.surfaceOutline, true: colors.primary }}
+                      ios_backgroundColor={colors.surfaceOutline}
+                      accessibilityRole="switch"
+                      accessibilityLabel={t('screens.search.hideZeroSeeders')}
+                      accessibilityState={{ checked: hideZeroSeeders }}
+                    />
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -1406,6 +1487,16 @@ const styles = StyleSheet.create({
   sortOptionText: {
     flex: 1,
     fontSize: 15,
+  },
+  sortDivider: {
+    height: StyleSheet.hairlineWidth,
+  },
+  sortToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
   },
   center: {
     flex: 1,

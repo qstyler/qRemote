@@ -24,7 +24,10 @@ export const CHANGELOG: ChangelogRelease[] = [
     sections: [
       {
         title: 'New Features',
-        items: ['Added Polish language support'],
+        items: [
+          'Added Polish language support',
+          'Added a "Hide zero seeders" option to search results',
+        ],
       },
       {
         title: 'Bugs Fixed',
