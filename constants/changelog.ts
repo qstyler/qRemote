@@ -30,6 +30,7 @@ export const CHANGELOG: ChangelogRelease[] = [
         title: 'Bugs Fixed',
         items: [
           'Fixed the self-signed certificate setting not being remembered after closing the app',
+          'Fixed renamed RSS feeds still showing their original name',
         ],
       },
     ],

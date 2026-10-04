@@ -533,6 +533,7 @@ export default function RssFeedsScreen() {
                 />
               ) : (
                 <FeedRow
+                  path={item.path}
                   feed={item.feed}
                   depth={item.depth}
                   isBusy={busyPath === item.path}
@@ -657,6 +658,7 @@ function FolderRow({
 }
 
 interface FeedRowProps {
+  path: string;
   feed: RssFeed;
   depth: number;
   isBusy: boolean;
@@ -666,7 +668,22 @@ interface FeedRowProps {
   onMenuPress: (anchor: Anchor) => void;
 }
 
-function FeedRow({ feed, depth, isBusy, colors, onPress, onLongPress, onMenuPress }: FeedRowProps) {
+function FeedRow({
+  path,
+  feed,
+  depth,
+  isBusy,
+  colors,
+  onPress,
+  onLongPress,
+  onMenuPress,
+}: FeedRowProps) {
+  // qBittorrent keys the RSS tree by the user-chosen name (the item path), so
+  // that is the display name — `feed.title` is whatever the feed calls itself
+  // and would hide a rename (#273). Show the feed's own title as the subtitle
+  // only when it adds information, otherwise fall back to the URL host.
+  const displayName = rssPathBaseName(path) || feed.title || feed.url;
+  const subtitle = feed.title && feed.title !== displayName ? feed.title : getUrlHost(feed.url);
   return (
     <TouchableOpacity
       style={[
@@ -694,11 +711,11 @@ function FeedRow({ feed, depth, isBusy, colors, onPress, onLongPress, onMenuPres
           style={[styles.rowTitle, { color: feed.hasError ? colors.error : colors.text }]}
           numberOfLines={1}
         >
-          {feed.title || feed.url}
+          {displayName}
         </Text>
-        {feed.title ? (
+        {subtitle ? (
           <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-            {getUrlHost(feed.url)}
+            {subtitle}
           </Text>
         ) : null}
       </View>

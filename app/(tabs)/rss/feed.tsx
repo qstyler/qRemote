@@ -40,7 +40,7 @@ import { shadows } from '@/constants/shadows';
 import { typography } from '@/constants/typography';
 import { getErrorMessage } from '@/utils/error';
 import { haptics } from '@/utils/haptics';
-import { sortArticlesByDateDesc, toSearchQuery } from '@/utils/rss';
+import { rssPathBaseName, sortArticlesByDateDesc, toSearchQuery } from '@/utils/rss';
 
 export default function RssFeedArticlesScreen() {
   const { t } = useTranslation();
@@ -325,7 +325,10 @@ export default function RssFeedArticlesScreen() {
     handleSearchForThis,
   ]);
 
-  const headerTitle = feed?.title || feed?.url || t('screens.rss.feedsTitle');
+  // The item path carries the user-chosen (renamed) name; feed.title is only
+  // what the feed calls itself (#273).
+  const headerTitle =
+    rssPathBaseName(itemPath) || feed?.title || feed?.url || t('screens.rss.feedsTitle');
 
   // ────────────────────────────────────────────────── render ──────────────
 
