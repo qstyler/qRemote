@@ -19,6 +19,30 @@ export interface ChangelogRelease {
 }
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: '3.8.46',
+    date: '2026-10-04',
+    sections: [
+      {
+        title: 'New Features',
+        items: [
+          'Added Polish language support',
+          'Added a "Hide zero seeders" option to search results',
+          'Added a qui Proxy connection option for servers managed by qui',
+          'Added search result filters: names only, text filter, seeders and size ranges',
+          'Added sorting and filtering search results by video quality',
+          'Added grouping of duplicate search results from different indexers',
+        ],
+      },
+      {
+        title: 'Bugs Fixed',
+        items: [
+          'Fixed the self-signed certificate setting not being remembered after closing the app',
+          'Fixed renamed RSS feeds still showing their original name',
+        ],
+      },
+    ],
+  },
+  {
     version: '3.8.45',
     date: '2026-09-21',
     sections: [

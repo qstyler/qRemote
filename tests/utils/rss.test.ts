@@ -1,4 +1,5 @@
 import {
+  getRssFeedDisplayName,
   flattenRssTree,
   isRssFeed,
   joinRssPath,
@@ -169,5 +170,28 @@ describe('sortArticlesByDateDesc', () => {
 
   it('returns an empty array unchanged', () => {
     expect(sortArticlesByDateDesc([])).toEqual([]);
+  });
+});
+
+describe('getRssFeedDisplayName', () => {
+  const feed = { url: 'https://example.com/rss.xml', title: 'Example Releases' };
+
+  it('shows the name the user gave the feed', () => {
+    expect(getRssFeedDisplayName('My Shows', feed)).toBe('My Shows');
+  });
+
+  it('keeps a rename inside a folder', () => {
+    expect(getRssFeedDisplayName('TV\\My Shows', feed)).toBe('My Shows');
+  });
+
+  it('falls back to the feed title when the name is just the URL (never renamed)', () => {
+    expect(getRssFeedDisplayName('https://example.com/rss.xml', feed)).toBe('Example Releases');
+    expect(getRssFeedDisplayName('TV\\https://example.com/rss.xml', feed)).toBe('Example Releases');
+  });
+
+  it('falls back to the URL when an unnamed feed has no title yet', () => {
+    expect(getRssFeedDisplayName('https://example.com/rss.xml', { ...feed, title: '' })).toBe(
+      'https://example.com/rss.xml',
+    );
   });
 });

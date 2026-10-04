@@ -4,7 +4,7 @@
  * folder nodes (plain nested objects) at any depth. Paths are joined with
  * `\` per qBittorrent's own convention (addFolder/addFeed/moveItem params).
  *
- * Key exports: isRssFeed, flattenRssTree, joinRssPath, parentRssPath, rssPathBaseName, toSearchQuery, sortArticlesByDateDesc
+ * Key exports: isRssFeed, flattenRssTree, joinRssPath, parentRssPath, rssPathBaseName, getRssFeedDisplayName, toSearchQuery, sortArticlesByDateDesc
  */
 import { RssArticle, RssFeed, RssItemsResponse, RssTreeNode } from '@/types/api';
 
@@ -24,6 +24,18 @@ export function parentRssPath(path: string): string {
 export function rssPathBaseName(path: string): string {
   const idx = path.lastIndexOf('\\');
   return idx === -1 ? path : path.slice(idx + 1);
+}
+
+/**
+ * The name to show for a feed. qBittorrent keys the tree by the item name (the
+ * path), so a name the user chose — a rename (#273) — always wins. A feed that
+ * was never named has the URL as its name (`rss/addFeed` falls back to the URL
+ * for an empty path), and there the feed's own title reads far better.
+ */
+export function getRssFeedDisplayName(path: string, feed: Pick<RssFeed, 'url' | 'title'>): string {
+  const name = rssPathBaseName(path);
+  if (name && name.trim() !== (feed.url ?? '').trim()) return name;
+  return feed.title || feed.url;
 }
 
 export interface FlattenedRssTree {

@@ -10,6 +10,8 @@ import { ApiFeatures, getApiFeatures } from '@/utils/apiVersion';
 import { isTlsRejection } from '@/utils/error';
 import { basicAuthHeader } from '@/utils/basicAuth';
 import { isReservedHeaderName } from '@/utils/customHeaders';
+import { getServerAuthMode } from '@/utils/authMode';
+import { QUI_KEY_REJECTED_MESSAGE, redactQuiProxyKey, withQuiProxyPath } from '@/utils/quiProxy';
 
 /** An error from the API client, carrying the HTTP status when the request got a response. */
 export interface ApiError extends Error {
@@ -29,8 +31,21 @@ function apiError(message: string, status?: number): ApiError {
   return err;
 }
 
-/** Config augmented with the session epoch it was issued under (see ApiClient.sessionEpoch). */
-type EpochedRequestConfig = InternalAxiosRequestConfig & { __sessionEpoch?: number };
+/**
+ * Config augmented with the session epoch it was issued under (see
+ * ApiClient.sessionEpoch) and whether its URL carries a qui proxy key. The
+ * latter is stamped per request — not read off `currentServer` when the
+ * response lands — so a late response from a qui server we've since switched
+ * away from is still redacted. Redaction is conditional on it because
+ * `/proxy/<x>` is also a perfectly ordinary qBittorrent reverse-proxy base
+ * path, which diagnostics should keep showing verbatim.
+ */
+type EpochedRequestConfig = InternalAxiosRequestConfig & {
+  __sessionEpoch?: number;
+  __quiProxy?: boolean;
+};
+
+const identity = (text: string): string => text;
 
 class ApiClient {
   private client: AxiosInstance;
@@ -83,6 +98,7 @@ class ApiClient {
         }
 
         config.__sessionEpoch = this.sessionEpoch;
+        config.__quiProxy = getServerAuthMode(this.currentServer) === 'quiProxy';
 
         const protocol = this.currentServer.useHttps ? 'https' : 'http';
         // Defense-in-depth: strip protocol and trailing colons/slashes from host even if already sanitized
@@ -94,8 +110,17 @@ class ApiClient {
         const portPart =
           portNum !== undefined && !isNaN(portNum) && portNum > 0 ? `:${portNum}` : '';
 
-        // Handle base path - ensure it starts with / and doesn't end with /
+        // qui Client Proxy (#272): the key is a path segment, so the effective
+        // base path is `<qui base>/proxy/<key>`. qui has no Bearer header and no
+        // real login — auth is entirely this path.
+        const isQuiProxy = config.__quiProxy === true;
+        const redact = isQuiProxy ? redactQuiProxyKey : identity;
         let basePath = this.currentServer.basePath || '/';
+        if (isQuiProxy && this.currentServer.quiProxyKey) {
+          basePath = withQuiProxyPath(basePath, this.currentServer.quiProxyKey);
+        }
+
+        // Handle base path - ensure it starts with / and doesn't end with /
         if (!basePath.startsWith('/')) {
           basePath = '/' + basePath;
         }
@@ -109,15 +134,19 @@ class ApiClient {
 
         config.baseURL = `${protocol}://${host}${portPart}${basePath}`;
 
+        // Every URL that reaches the log is redacted — in qui mode the baseURL
+        // contains the secret key.
         clogDebug(
           'HTTP',
-          `${config.method?.toUpperCase() || 'REQ'} ${config.baseURL}${config.url || ''}`,
+          redact(`${config.method?.toUpperCase() || 'REQ'} ${config.baseURL}${config.url || ''}`),
         );
 
         // API key auth (v5.2.0+ / WebAPI 2.14.1+) takes precedence over proxy
         // Basic Auth since both use the same Authorization header — a server
         // configured for both is choosing API key as the more specific option.
-        if (this.currentServer.useApiKey && this.currentServer.apiKey) {
+        // qui mode sends no Bearer header at all (its key is in the path), but
+        // proxy Basic Auth still applies for a gateway sitting in front of qui.
+        if (!isQuiProxy && this.currentServer.useApiKey && this.currentServer.apiKey) {
           config.headers.Authorization = `Bearer ${this.currentServer.apiKey}`;
         } else if (this.currentServer.useBasicAuth && this.currentServer.basicAuthUsername) {
           config.headers.Authorization = basicAuthHeader(
@@ -182,8 +211,25 @@ class ApiClient {
         return response;
       },
       (error: AxiosError) => {
-        const reqUrl = `${error.config?.baseURL || ''}${error.config?.url || ''}`;
+        // Redacted once here: reqUrl and every message below end up in the
+        // connectivity log and/or a thrown (user-visible) Error, and in qui mode
+        // the baseURL carries the secret proxy key.
+        const wasQuiProxy = (error.config as EpochedRequestConfig | undefined)?.__quiProxy === true;
+        const redact = wasQuiProxy ? redactQuiProxyKey : identity;
+        const reqUrl = redact(`${error.config?.baseURL || ''}${error.config?.url || ''}`);
         const status = error.response?.status;
+
+        // qui validates the proxy key from the URL path and answers 401 with a
+        // plain-text "Invalid API key" / "Missing API key". That is a wrong or
+        // revoked key — not a session a re-login can fix — so it gets its own
+        // message rather than the generic fall-through below.
+        if (status === 401 && wasQuiProxy) {
+          const body = error.response?.data?.toString() ?? '';
+          if (/\b(invalid|missing) api key\b/i.test(body)) {
+            clogError('HTTP', `401 qui rejected the proxy key — ${reqUrl}`);
+            throw apiError(QUI_KEY_REJECTED_MESSAGE, status);
+          }
+        }
 
         // Handle authentication errors
         if (status === 403) {
@@ -234,7 +280,7 @@ class ApiClient {
 
         // Handle 404 Not Found errors
         if (status === 404) {
-          const fullUrl = `${error.config?.baseURL}${error.config?.url}`;
+          const fullUrl = reqUrl;
           clogWarn('HTTP', `404 Not Found — ${fullUrl}`);
           throw apiError(
             `Endpoint not found: ${fullUrl}. Please check your qBittorrent version and API compatibility.`,
@@ -277,8 +323,9 @@ class ApiClient {
         }
 
         // Handle other errors
-        const message =
-          error.response?.data?.toString() || error.message || 'An unknown error occurred';
+        const message = redact(
+          error.response?.data?.toString() || error.message || 'An unknown error occurred',
+        );
         clogError(
           'HTTP',
           `${status ? 'HTTP ' + status : error.code || 'Unknown'} — ${reqUrl}: ${message}`,
@@ -399,6 +446,20 @@ class ApiClient {
     data: Record<string, string | number | boolean>,
     signal?: AbortSignal,
   ): Promise<unknown> {
+    return (await this.postUrlEncodedWithStatus(url, data, signal)).data;
+  }
+
+  /**
+   * Same request as `postUrlEncoded`, but also reports the HTTP status of the
+   * 2xx response. Needed by the few endpoints that signal progress through the
+   * status code rather than the body — e.g. torrents/fetchMetadata answers 202
+   * while a download is still in flight and 200 once it has the metadata.
+   */
+  async postUrlEncodedWithStatus(
+    url: string,
+    data: Record<string, string | number | boolean>,
+    signal?: AbortSignal,
+  ): Promise<{ data: unknown; status: number }> {
     // Check server is configured (interceptor will also check, but fail early with better error)
     if (!this.currentServer) {
       throw new Error('No server configured. Please connect to a server first.');
@@ -418,7 +479,7 @@ class ApiClient {
     const response = await this.client.post(url, body, {
       signal: signal ?? this.sessionController.signal,
     });
-    return response.data;
+    return { data: response.data, status: response.status };
   }
 
   private isRetriableError(error: unknown): boolean {

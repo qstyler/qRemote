@@ -610,6 +610,26 @@ describe('apiClient', () => {
     });
   });
 
+  describe('postUrlEncodedWithStatus', () => {
+    it('throws when no server is configured', async () => {
+      apiClient.setServer(null);
+      await expect(apiClient.postUrlEncodedWithStatus('/x', { a: 1 })).rejects.toThrow(
+        'No server configured. Please connect to a server first.',
+      );
+    });
+
+    it('returns the body together with the HTTP status (e.g. a 202 "still working")', async () => {
+      apiClient.setServer(makeServer());
+      mockAxiosInstance.post.mockResolvedValueOnce({ data: {}, status: 202 });
+      const result = await apiClient.postUrlEncodedWithStatus('/torrents/fetchMetadata', {
+        source: 'https://x/a.torrent',
+      });
+      expect(result).toEqual({ data: {}, status: 202 });
+      const [, body] = mockAxiosInstance.post.mock.calls[0];
+      expect(body).toBe('source=https%3A%2F%2Fx%2Fa.torrent');
+    });
+  });
+
   describe('get', () => {
     it('throws when no server is configured', async () => {
       apiClient.setServer(null);
