@@ -18,7 +18,7 @@ import path from 'path';
 
 const LOCALES_DIR = path.join(__dirname, '..', '..', 'locales');
 const SOURCE_LOCALE = 'en';
-const TARGET_LOCALES = ['es', 'zh', 'fr', 'de', 'ru'];
+const TARGET_LOCALES = ['es', 'zh', 'fr', 'de', 'ru', 'pl'];
 
 type TranslationTree = { [key: string]: string | TranslationTree };
 
@@ -123,7 +123,9 @@ describe('i18n locale parity', () => {
     });
 
     it('has no extra keys that en does not have', () => {
-      const extra = [...localeKeys].filter((k) => !enKeySet.has(k));
+      const extra = [...localeKeys].filter(
+        (k) => !enKeySet.has(k) && !(locale === 'pl' && /_(few|many)$/.test(k)),
+      );
       expect(extra).toEqual([]);
     });
 
