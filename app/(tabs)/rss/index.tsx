@@ -34,7 +34,13 @@ import { useToast } from '@/context/ToastContext';
 import { useServer } from '@/context/ServerContext';
 import { useRssFeeds } from '@/hooks/useRssFeeds';
 import { RssFeed, RssItemsResponse } from '@/types/api';
-import { isRssFeed, joinRssPath, parentRssPath, rssPathBaseName } from '@/utils/rss';
+import {
+  getRssFeedDisplayName,
+  isRssFeed,
+  joinRssPath,
+  parentRssPath,
+  rssPathBaseName,
+} from '@/utils/rss';
 import { spacing, borderRadius } from '@/constants/spacing';
 import { typography } from '@/constants/typography';
 import { getErrorMessage } from '@/utils/error';
@@ -682,7 +688,7 @@ function FeedRow({
   // that is the display name — `feed.title` is whatever the feed calls itself
   // and would hide a rename (#273). Show the feed's own title as the subtitle
   // only when it adds information, otherwise fall back to the URL host.
-  const displayName = rssPathBaseName(path) || feed.title || feed.url;
+  const displayName = getRssFeedDisplayName(path, feed);
   const subtitle = feed.title && feed.title !== displayName ? feed.title : getUrlHost(feed.url);
   return (
     <TouchableOpacity

@@ -606,7 +606,9 @@ for the pasted `…/proxy/<key>` URL, `withQuiProxyPath` for the request path,
 reserved-name set the app manages itself: Authorization, Cookie, Referer,
 Origin, Content-Type, Host — #228) ·
 `magnet.ts` / `torrent-file.ts` (incoming link and file parsing) · `rss.ts`
-(RSS tree flattening; paths join with `\`) · `searchResult.ts` (indexer-label
+(RSS tree flattening; paths join with `\`; `getRssFeedDisplayName` — a feed's
+name is its path, which qBit defaults to the URL, so a never-renamed feed shows
+its own title and a rename wins, #273) · `searchResult.ts` (indexer-label
 heuristics) · `search-filters.ts` (`filterSearchResults(results, opts)` —
 client-side Search result filters: `hideZeroSeeders` (hides only an explicit
 `nbSeeders === 0`, never the `-1` "unknown" sentinel — #270) and the #266
