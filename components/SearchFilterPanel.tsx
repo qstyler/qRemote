@@ -116,6 +116,8 @@ export function SearchFilterPanel({
     },
   ];
   const labelStyle = [styles.label, { color: colors.textSecondary }];
+  // "Names only" is a filter too, so it counts as something to clear.
+  const canClear = isDraftDirty(draft) || searchIn === 'names';
 
   return (
     <View
@@ -251,19 +253,19 @@ export function SearchFilterPanel({
         <TouchableOpacity
           style={styles.clearButton}
           onPress={onClear}
-          disabled={!isDraftDirty(draft)}
+          disabled={!canClear}
           activeOpacity={0.7}
           accessibilityRole="button"
         >
           <Ionicons
             name="close-circle-outline"
             size={16}
-            color={isDraftDirty(draft) ? colors.primary : colors.textSecondary}
+            color={canClear ? colors.primary : colors.textSecondary}
           />
           <Text
             style={[
               styles.clearButtonText,
-              { color: isDraftDirty(draft) ? colors.primary : colors.textSecondary },
+              { color: canClear ? colors.primary : colors.textSecondary },
             ]}
           >
             {t('screens.search.clearFilters')}

@@ -431,9 +431,10 @@ export default function SearchScreen() {
     }),
     [searchInMode, submittedPattern, filterDraft],
   );
-  // The funnel button shows an "active" dot for any deviation from defaults,
-  // including a saved "names only" scope that has no pattern to apply yet.
-  const filtersActive = searchInMode === 'names' || hasActiveFilters(contentFilterOptions);
+  // The funnel button shows an "active" dot only while something is actually
+  // filtering the results. A saved "names only" scope with no search to apply
+  // it to filters nothing, so it doesn't light the dot.
+  const filtersActive = hasActiveFilters(contentFilterOptions);
 
   // Filter, group, then sort, the live results client-side; qBittorrent's search
   // API does none of it. Pipeline: dedupe → tracker chips → panel filters (#266) →
@@ -559,11 +560,18 @@ export default function SearchScreen() {
     setStagedDraft((prev) => ({ ...prev, ...patch }));
   }, []);
 
-  // Panel's "Clear filters" empties the staged fields only; Apply commits.
-  const handleClearStaged = useCallback(() => {
+  // Panel's "Clear filters": resets everything — the staged fields, what is
+  // currently applied, and the "Search in" scope — right away, so the results
+  // and the funnel's active dot never disagree with an empty-looking panel.
+  const handleClearPanel = useCallback(() => {
     haptics.light();
     setStagedDraft(EMPTY_SEARCH_FILTER_DRAFT);
-  }, []);
+    setStagedSearchIn('everywhere');
+    setFilterDraft(EMPTY_SEARCH_FILTER_DRAFT);
+    // Deliberately emptied for this search — don't re-seed the box on next open.
+    prefilledPatternRef.current = submittedPattern;
+    if (searchInMode !== 'everywhere') void handleSearchInChange('everywhere');
+  }, [submittedPattern, searchInMode, handleSearchInChange]);
 
   const handleClearFilters = useCallback(() => {
     haptics.light();
@@ -1568,7 +1576,7 @@ export default function SearchScreen() {
                   onChange={patchStagedDraft}
                   searchIn={stagedSearchIn}
                   onSearchInChange={setStagedSearchIn}
-                  onClear={handleClearStaged}
+                  onClear={handleClearPanel}
                   onApply={handleApplyFilters}
                 />
               )}

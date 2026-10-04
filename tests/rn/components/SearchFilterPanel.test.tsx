@@ -108,4 +108,10 @@ describe('SearchFilterPanel', () => {
     await fireEvent.press(screen.getByText('720p'));
     expect(props.onChange).toHaveBeenLastCalledWith({ qualities: ['1080p'] });
   });
+
+  it('lets you clear a saved "Names only" scope even with nothing typed', async () => {
+    const { props } = await renderPanel({ searchIn: 'names' });
+    await fireEvent.press(screen.getByText('screens.search.clearFilters'));
+    expect(props.onClear).toHaveBeenCalledTimes(1);
+  });
 });
