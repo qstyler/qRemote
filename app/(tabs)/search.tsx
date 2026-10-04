@@ -13,6 +13,7 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
+  Pressable,
   ActivityIndicator,
   ScrollView,
   Switch,
@@ -35,6 +36,7 @@ import { ActionMenu, ActionMenuItemDef } from '@/components/ActionMenu';
 import { SearchCartModal } from '@/components/SearchCartModal';
 import { EmptyState } from '@/components/EmptyState';
 import { FilterChip } from '@/components/FilterChip';
+import { SearchFilterPanel } from '@/components/SearchFilterPanel';
 import { useApiFeatures } from '@/context/ApiVersionContext';
 import { useServer } from '@/context/ServerContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -47,8 +49,16 @@ import { tagsApi } from '@/services/api/tags';
 import { storageService } from '@/services/storage';
 import { clogDebug, clogWarn } from '@/services/connectivity-log';
 import { SearchPlugin, SearchResult } from '@/types/api';
+import { SearchInMode } from '@/types/preferences';
 import { siteHost, resultTrackerLabel } from '@/utils/searchResult';
-import { filterSearchResults } from '@/utils/search-filters';
+import {
+  EMPTY_SEARCH_FILTER_DRAFT,
+  SearchFilterDraft,
+  SearchFilterOptions,
+  draftToFilterOptions,
+  filterSearchResults,
+  hasActiveFilters,
+} from '@/utils/search-filters';
 import {
   getAddTorrentDialogueVariant,
   getSearchAddOpensDialogue,
@@ -243,6 +253,24 @@ export default function SearchScreen() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [hideZeroSeeders, setHideZeroSeeders] = useState(false);
+  // #266 filter panel. `searchInMode` is the persisted "Search in" default;
+  // everything in `filterDraft` is session-only and resets on a new search.
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [searchInMode, setSearchInMode] = useState<SearchInMode>('everywhere');
+  const [filterDraft, setFilterDraft] = useState<SearchFilterDraft>(EMPTY_SEARCH_FILTER_DRAFT);
+  // What the open panel is editing. Nothing here touches the results until the
+  // user taps Apply, which copies it into `filterDraft` / `searchInMode`.
+  const [stagedDraft, setStagedDraft] = useState<SearchFilterDraft>(EMPTY_SEARCH_FILTER_DRAFT);
+  const [stagedSearchIn, setStagedSearchIn] = useState<SearchInMode>('everywhere');
+  // The pattern of the search whose results are on screen. "Names only"
+  // matches against this rather than the live query box, so editing the box
+  // after a search doesn't retroactively re-filter (or empty) the list.
+  const [submittedPattern, setSubmittedPattern] = useState('');
+  const pendingPatternRef = useRef('');
+  // The pattern the filter box was last pre-filled with. Opening the filter
+  // panel seeds the box with the current search once per search, so clearing
+  // it afterwards stays cleared instead of snapping back on the next open.
+  const prefilledPatternRef = useRef('');
   const [pendingAddUrl, setPendingAddUrl] = useState<string | null>(null);
   const [actionResult, setActionResult] = useState<SearchResult | null>(null);
 
@@ -253,7 +281,7 @@ export default function SearchScreen() {
     [features.supportsSearchPubDate],
   );
 
-  // Load remembered plugin/category/zero-seeder filter once at mount. The
+  // Load remembered plugin/category/zero-seeder/search-in settings once at mount. The
   // query text itself is deliberately NOT restored — it should reset on a
   // fresh app launch, and React state already keeps it intact when just
   // switching tabs within the same running session (this screen stays
@@ -265,6 +293,7 @@ export default function SearchScreen() {
         if (prefs.lastSearchPlugin) setPlugin(prefs.lastSearchPlugin);
         if (prefs.lastSearchCategory) setCategory(prefs.lastSearchCategory);
         if (prefs.searchHideZeroSeeders) setHideZeroSeeders(true);
+        if (prefs.searchInMode === 'names') setSearchInMode('names');
       } catch {
         // ignore — defaults are fine
       }
@@ -379,9 +408,24 @@ export default function SearchScreen() {
     });
   }, []);
 
-  // Sort the live results client-side; qBittorrent's search API doesn't sort.
-  // De-duplicate by fileUrl first so the list keyExtractor can rely on a
-  // stable, unique key instead of the array index.
+  // Everything the #266 filter panel contributes, as `filterSearchResults`
+  // options: the "names only" scope (against the submitted pattern, not the
+  // live query box) plus the session-only text/seeders/size filters.
+  const contentFilterOptions = useMemo<SearchFilterOptions>(
+    () => ({
+      nameTerms: searchInMode === 'names' ? submittedPattern : undefined,
+      ...draftToFilterOptions(filterDraft),
+    }),
+    [searchInMode, submittedPattern, filterDraft],
+  );
+  // The funnel button shows an "active" dot for any deviation from defaults,
+  // including a saved "names only" scope that has no pattern to apply yet.
+  const filtersActive = searchInMode === 'names' || hasActiveFilters(contentFilterOptions);
+
+  // Filter, then sort, the live results client-side; qBittorrent's search API
+  // does neither. Pipeline: dedupe → tracker chips → panel filters (#266) →
+  // hide zero seeders (#270) → sort. De-duplicate by fileUrl first so the list
+  // keyExtractor can rely on a stable, unique key instead of the array index.
   const sortedResults = useMemo(() => {
     const seenUrls = new Set<string>();
     const deduped = results.filter((r) => {
@@ -396,7 +440,9 @@ export default function SearchScreen() {
         : deduped.filter((r) => selectedTrackers.has(resultTrackerLabel(r, isAggregatedSource)));
     // Filter before sorting. filterSearchResults may hand back the same array,
     // so copy before the in-place sort.
-    const filtered = [...filterSearchResults(trackerFiltered, { hideZeroSeeders })];
+    const filtered = [
+      ...filterSearchResults(trackerFiltered, { ...contentFilterOptions, hideZeroSeeders }),
+    ];
     filtered.sort((a, b) => {
       let cmp = 0;
       switch (sortBy) {
@@ -426,16 +472,26 @@ export default function SearchScreen() {
       return sortDirection === 'asc' ? cmp : -cmp;
     });
     return filtered;
-  }, [results, selectedTrackers, isAggregatedSource, sortBy, sortDirection, hideZeroSeeders]);
+  }, [
+    results,
+    selectedTrackers,
+    isAggregatedSource,
+    sortBy,
+    sortDirection,
+    hideZeroSeeders,
+    contentFilterOptions,
+  ]);
 
   // Header count: `total` is the server's raw count, so with the zero-seeder
-  // filter on, subtract the loaded results it hides. (Computed from `results`
-  // rather than sortedResults so the tracker filter keeps not affecting it.)
+  // or panel filters on, subtract the loaded results they hide. (Computed from
+  // `results` rather than sortedResults so the tracker filter keeps not
+  // affecting it.)
   const visibleTotal = useMemo(() => {
-    if (!hideZeroSeeders) return total;
-    const hidden = results.length - filterSearchResults(results, { hideZeroSeeders }).length;
+    const hidden =
+      results.length -
+      filterSearchResults(results, { ...contentFilterOptions, hideZeroSeeders }).length;
     return Math.max(0, total - hidden);
-  }, [results, total, hideZeroSeeders]);
+  }, [results, total, hideZeroSeeders, contentFilterOptions]);
 
   const handleToggleHideZeroSeeders = useCallback(async (value: boolean) => {
     haptics.light();
@@ -448,6 +504,56 @@ export default function SearchScreen() {
       clogWarn('SEARCH', `Failed to save hide-zero-seeders preference: ${getErrorMessage(err)}`);
     }
   }, []);
+
+  const handleSearchInChange = useCallback(async (mode: SearchInMode) => {
+    haptics.light();
+    setSearchInMode(mode);
+    try {
+      const prefs = await storageService.getPreferences();
+      await storageService.savePreferences({ ...prefs, searchInMode: mode });
+    } catch (err: unknown) {
+      // The in-memory choice still works; only persistence across launches is lost.
+      clogWarn('SEARCH', `Failed to save search-in preference: ${getErrorMessage(err)}`);
+    }
+  }, []);
+
+  const patchStagedDraft = useCallback((patch: Partial<SearchFilterDraft>) => {
+    setStagedDraft((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  // Panel's "Clear filters" empties the staged fields only; Apply commits.
+  const handleClearStaged = useCallback(() => {
+    haptics.light();
+    setStagedDraft(EMPTY_SEARCH_FILTER_DRAFT);
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    haptics.light();
+    setFilterDraft(EMPTY_SEARCH_FILTER_DRAFT);
+  }, []);
+
+  // Closing without Apply discards whatever was staged.
+  const closeFilterPanel = useCallback(() => {
+    Keyboard.dismiss();
+    setShowFilterPanel(false);
+  }, []);
+
+  const handleApplyFilters = useCallback(() => {
+    haptics.light();
+    setFilterDraft(stagedDraft);
+    // The box was seeded (or deliberately emptied) for this search — don't
+    // seed it again on the next open.
+    prefilledPatternRef.current = submittedPattern;
+    if (stagedSearchIn !== searchInMode) void handleSearchInChange(stagedSearchIn);
+    closeFilterPanel();
+  }, [
+    stagedDraft,
+    stagedSearchIn,
+    searchInMode,
+    submittedPattern,
+    handleSearchInChange,
+    closeFilterPanel,
+  ]);
 
   // The FlatList unmounts whenever the (filtered) result set is empty — the
   // empty state has no scrollable surface, so no onScroll event could ever
@@ -480,7 +586,13 @@ export default function SearchScreen() {
       haptics.medium();
       try {
         setSelectedTrackers(new Set());
+        // Filters belong to one result set; the persisted "Search in" scope stays.
+        setFilterDraft(EMPTY_SEARCH_FILTER_DRAFT);
+        prefilledPatternRef.current = '';
         setIsAggregatedSource(false);
+        // Adopted once the new job's id lands (see the jobId effect below), so
+        // the previous results keep matching their own pattern until then.
+        pendingPatternRef.current = pattern;
         await start(pattern, plugin, category);
         const prefs = await storageService.getPreferences();
         await storageService.savePreferences({
@@ -496,6 +608,15 @@ export default function SearchScreen() {
   );
 
   const handleSubmit = useCallback(() => runSearch(query.trim()), [query, runSearch]);
+
+  // A new job id means `start` succeeded; only then does the pattern it was
+  // started with become the one "names only" filters against. (`start` reports
+  // failure through `error` rather than throwing, and the first results fetch
+  // is awaited inside it, so setting this any other way either misfilters the
+  // old results after a failed start or the new ones for a render.)
+  useEffect(() => {
+    if (jobId !== null) setSubmittedPattern(pendingPatternRef.current);
+  }, [jobId]);
 
   // Cross-tab handoff: e.g. RSS article "Search for This" navigates here with
   // ?q=<title>&ts=<nonce> to pre-fill and immediately run a search. Guarded by
@@ -698,6 +819,8 @@ export default function SearchScreen() {
   const onClearQuery = () => {
     setQuery('');
     setSelectedTrackers(new Set());
+    setFilterDraft(EMPTY_SEARCH_FILTER_DRAFT);
+    prefilledPatternRef.current = '';
     setIsAggregatedSource(false);
     if (jobId !== null) void reset();
   };
@@ -818,15 +941,46 @@ export default function SearchScreen() {
         />
       );
     }
-    if (results.length > 0 && hideZeroSeeders) {
-      // Raw results exist, but the zero-seeder filter hides every one of them.
-      // If a tracker filter is also active, only claim this when some result
-      // actually matches it — otherwise the tracker filter is the culprit and
-      // the branch below explains it.
-      const trackerMatches =
-        selectedTrackers.size === 0 ||
-        results.some((r) => selectedTrackers.has(resultTrackerLabel(r, isAggregatedSource)));
-      if (trackerMatches) {
+    if (results.length > 0) {
+      // Raw results exist but the pipeline (see sortedResults) emptied the
+      // list. Blame the first stage that eliminates everything, in pipeline
+      // order, so the empty state names the filter the user can actually undo.
+      const trackerFiltered =
+        selectedTrackers.size === 0
+          ? results
+          : results.filter((r) => selectedTrackers.has(resultTrackerLabel(r, isAggregatedSource)));
+      if (trackerFiltered.length === 0) {
+        return (
+          <EmptyState
+            style={{ backgroundColor: colors.background }}
+            icon="funnel-outline"
+            title={t('screens.search.noTrackerResults')}
+            actionLabel={t('screens.search.allTrackers')}
+            actionIcon="close-circle-outline"
+            onAction={() => setSelectedTrackers(new Set())}
+          />
+        );
+      }
+      const panelFiltered = filterSearchResults(trackerFiltered, contentFilterOptions);
+      if (panelFiltered.length === 0 && hasActiveFilters(contentFilterOptions)) {
+        // Clear whatever the user typed; if only the saved "names only" scope
+        // is left doing the filtering, relax that instead (an explicit tap,
+        // so persisting the change is what they asked for).
+        const hasDraftFilters = hasActiveFilters({ ...contentFilterOptions, nameTerms: undefined });
+        return (
+          <EmptyState
+            style={{ backgroundColor: colors.background }}
+            icon="funnel-outline"
+            title={t('screens.search.noFilterResults')}
+            actionLabel={t('screens.search.clearFilters')}
+            actionIcon="close-circle-outline"
+            onAction={() =>
+              hasDraftFilters ? handleClearFilters() : void handleSearchInChange('everywhere')
+            }
+          />
+        );
+      }
+      if (hideZeroSeeders && filterSearchResults(panelFiltered, { hideZeroSeeders }).length === 0) {
         return (
           <EmptyState
             style={{ backgroundColor: colors.background }}
@@ -838,19 +992,6 @@ export default function SearchScreen() {
           />
         );
       }
-    }
-    if (results.length > 0 && selectedTrackers.size > 0) {
-      // Raw results exist, but the tracker filter excludes all of them.
-      return (
-        <EmptyState
-          style={{ backgroundColor: colors.background }}
-          icon="funnel-outline"
-          title={t('screens.search.noTrackerResults')}
-          actionLabel={t('screens.search.allTrackers')}
-          actionIcon="close-circle-outline"
-          onAction={() => setSelectedTrackers(new Set())}
-        />
-      );
     }
     if (status === 'Stopped' && total === 0) {
       return (
@@ -906,6 +1047,8 @@ export default function SearchScreen() {
                   ]}
                   onPress={() => {
                     haptics.light();
+                    // Only one of the sort menu / filter panel is open at a time.
+                    setShowFilterPanel(false);
                     setShowSortMenu(!showSortMenu);
                   }}
                   activeOpacity={0.7}
@@ -916,6 +1059,53 @@ export default function SearchScreen() {
                     size={18}
                     color={showSortMenu ? colors.primary : colors.text}
                   />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.iconButton,
+                    {
+                      backgroundColor: showFilterPanel ? colors.primaryOpac : colors.background,
+                      borderColor: colors.surfaceOutline,
+                    },
+                  ]}
+                  onPress={() => {
+                    haptics.light();
+                    setShowSortMenu(false);
+                    if (showFilterPanel) {
+                      closeFilterPanel();
+                    } else {
+                      // Stage a copy of the applied filters. The filter box is
+                      // seeded with the current search the first time the panel
+                      // opens for it; the user refines from there and taps Apply.
+                      const seed =
+                        submittedPattern &&
+                        prefilledPatternRef.current !== submittedPattern &&
+                        filterDraft.filterText === ''
+                          ? submittedPattern
+                          : filterDraft.filterText;
+                      setStagedDraft({ ...filterDraft, filterText: seed });
+                      setStagedSearchIn(searchInMode);
+                      setShowFilterPanel(true);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                  accessibilityLabel={t('screens.search.filterResults')}
+                  accessibilityState={{ expanded: showFilterPanel, selected: filtersActive }}
+                >
+                  <Ionicons
+                    name={filtersActive || showFilterPanel ? 'funnel' : 'funnel-outline'}
+                    size={18}
+                    color={filtersActive || showFilterPanel ? colors.primary : colors.text}
+                  />
+                  {filtersActive && (
+                    <View
+                      style={[
+                        styles.filterActiveDot,
+                        { backgroundColor: colors.primary, borderColor: colors.background },
+                      ]}
+                    />
+                  )}
                 </TouchableOpacity>
 
                 <View
@@ -1248,9 +1438,28 @@ export default function SearchScreen() {
                   </TouchableOpacity>
                 </View>
               )}
+
+              {/* Filter panel (#266) — floats like the sort dropdown. */}
+              {showFilterPanel && (
+                <SearchFilterPanel
+                  draft={stagedDraft}
+                  onChange={patchStagedDraft}
+                  searchIn={stagedSearchIn}
+                  onSearchInChange={setStagedSearchIn}
+                  onClear={handleClearStaged}
+                  onApply={handleApplyFilters}
+                />
+              )}
             </View>
           </TouchableWithoutFeedback>
         </Animated.View>
+
+        {/* Tapping anywhere outside the open filter panel closes it (and the
+            keyboard). Sits above the results list but below the header, so
+            the search row, chips and panel itself stay interactive. */}
+        {showFilterPanel && (
+          <Pressable style={styles.filterBackdrop} onPress={closeFilterPanel} accessible={false} />
+        )}
 
         {/* Results list / empty state */}
         {sortedResults.length === 0 ? (
@@ -1462,6 +1671,24 @@ const styles = StyleSheet.create({
   },
   stopChipText: {
     ...typography.captionSemibold,
+  },
+  filterActiveDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 1.5,
+  },
+  // Full-screen catcher behind the header (zIndex 1000) and above the list.
+  filterBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 900,
   },
   // True floating popup anchored under the sort button (left side of the
   // search row: 8 card padding + 42 button + 4 gap), overlaying the chip

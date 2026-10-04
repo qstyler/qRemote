@@ -45,6 +45,13 @@ export type AddTorrentDialogField =
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 
+/**
+ * Search tab "Search in" scope: 'names' keeps only results whose name contains
+ * every term of the submitted search; 'everywhere' keeps whatever the plugins
+ * returned (the pre-#266 behavior).
+ */
+export type SearchInMode = 'names' | 'everywhere';
+
 export interface AppPreferences {
   /**
    * @deprecated Use `themeMode` instead. Kept for backward compatibility:
@@ -166,6 +173,12 @@ export interface AppPreferences {
   searchHideZeroSeeders?: boolean;
 
   /**
+   * Search tab "Search in" default (#266). Absent is treated as 'everywhere',
+   * so existing users see no change.
+   */
+  searchInMode?: SearchInMode;
+
+  /**
    * Last active category filter on the torrents tab.
    * null = All categories; '' = Uncategorized (torrents with no category set).
    */
@@ -248,6 +261,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   lastSearchPlugin: 'all',
   lastSearchCategory: 'all',
   searchHideZeroSeeders: false,
+  searchInMode: 'everywhere',
   lastCategoryFilter: null,
   lastTagFilters: [],
 };

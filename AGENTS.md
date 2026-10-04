@@ -355,7 +355,7 @@ Complete map. Trust it.
 | Path | Notes |
 |---|---|
 | `app/(tabs)/(torrents)/` | Torrents tab as a nested stack: `index` list, `torrent/[hash]`, `torrent/files`, `torrent/manage-trackers`. Group is omitted from URLs → `/`, `/torrent/[hash]`. |
-| `app/(tabs)/search.tsx` | Search tab: job polling UI, plugin/category/indexer filter chips, client-side sort (the sort dropdown also hosts the persisted "Hide zero seeders" toggle, `searchHideZeroSeeders` pref), collapsing header. Optional auto-tag-by-tracker on add (`autoCategorizeByTracker` pref — tags Search downloads only; the key name is historical). |
+| `app/(tabs)/search.tsx` | Search tab: job polling UI, plugin/category/indexer filter chips, client-side sort (the sort dropdown also hosts the persisted "Hide zero seeders" toggle, `searchHideZeroSeeders` pref), a funnel-button filter panel (`components/SearchFilterPanel.tsx`: "Search in" names-only/everywhere — persisted `searchInMode` pref — plus session-only text, seeders and size filters, WebUI parity, #266), collapsing header. Result pipeline in `sortedResults`: dedupe → tracker chips → panel filters → hide zero seeders → sort; "names only" matches the last *submitted* pattern, not the live query box. Optional auto-tag-by-tracker on add (`autoCategorizeByTracker` pref — tags Search downloads only; the key name is historical). |
 | `app/(tabs)/transfer.tsx` | Transfer stats, global speed and seeding limits. |
 | `app/(tabs)/logs.tsx` | qBittorrent's own server-side application + peer log viewer (`logs/main`, `logs/peers` via `services/api/logs.ts`) — needs a live connection, shows a "not connected" placeholder otherwise. `href: null` — reached from Settings → Advanced ("Server Logs" row), not a visible tab. Not the app's own connectivity/diagnostic log — see `components/LogViewer.tsx` for that. |
 | `app/(tabs)/rss/` | RSS Feeds tab (`index` tree + `feed` detail). `href` is null until connected **and** the server's `rss_processing_enabled` is on. Rules and settings screens do **not** go here — they live under Settings. |
@@ -448,6 +448,10 @@ All PascalCase function components taking a `…Props` interface.
   from TorrentContext via `utils/save-paths.ts` — works on any qBittorrent
   version), `SearchCartModal` (review sheet for the Search tab's add queue —
   list, per-item remove, Clear all, Checkout — see `SearchCartContext.tsx`),
+  `SearchFilterPanel` (floating filter panel under the Search tab's search row
+  — "Search in" chips, text filter, seeders and size min/max with cycling unit
+  chips, Clear; controlled, state lives in `search.tsx` as a
+  `SearchFilterDraft` — #266),
   `ServerSwitcherModal` (quick server switcher sheet, #249 — opened from a
   compact badge+name in the torrents screen header; lists saved servers, marks
   the connected one, taps another to call `connectToServer` directly; owns its
@@ -586,9 +590,16 @@ Origin, Content-Type, Host — #228) ·
 `magnet.ts` / `torrent-file.ts` (incoming link and file parsing) · `rss.ts`
 (RSS tree flattening; paths join with `\`) · `searchResult.ts` (indexer-label
 heuristics) · `search-filters.ts` (`filterSearchResults(results, opts)` —
-client-side Search result filters, currently `hideZeroSeeders`: hides only an
-explicit `nbSeeders === 0`, never the `-1` "unknown" sentinel; runs before the
-sort in `search.tsx` — #270) · `login-response.ts` (qBittorrent login body/cookie interpretation) ·
+client-side Search result filters: `hideZeroSeeders` (hides only an explicit
+`nbSeeders === 0`, never the `-1` "unknown" sentinel — #270) and the #266
+WebUI-parity filters `nameTerms` / `filterText` (all whitespace-separated
+terms must be in the name, case-insensitive, `-term` excludes — no quotes, no
+accent folding, same as WebUI `containsAllTerms`), seeders and size ranges
+(0/unset = no bound, swapped min/max are reordered; unlike the WebUI, unknown
+`-1`/`0` values are *kept* by a range). Also `tokenizeTerms`,
+`parseSizeInput`/`parseSeedersInput`, `hasActiveFilters`, and the
+`SearchFilterDraft` ⇄ options helpers behind `SearchFilterPanel`. Runs before
+the sort in `search.tsx`) · `login-response.ts` (qBittorrent login body/cookie interpretation) ·
 `haptics.ts` (global toggle + wrappers) · `tags.ts` (CSV tag parsing) ·
 `add-torrent-dialogue.ts` (compact vs full variant, plus `getSearchAddOpensDialogue`
 for the Search tab's `+` behavior — #217) · `search-cart.ts`
