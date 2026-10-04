@@ -93,4 +93,19 @@ describe('SearchFilterPanel', () => {
     await fireEvent.press(screen.getByLabelText('screens.search.applyFilters'));
     expect(props.onApply).toHaveBeenCalledTimes(1);
   });
+
+  it('toggles video qualities in and out of the selection', async () => {
+    const { props } = await renderPanel();
+    await fireEvent.press(screen.getByText('1080p'));
+    expect(props.onChange).toHaveBeenLastCalledWith({ qualities: ['1080p'] });
+    await fireEvent.press(screen.getByText('2160p'));
+    expect(props.onChange).toHaveBeenLastCalledWith({ qualities: ['2160p'] });
+  });
+
+  it('deselects an already selected quality', async () => {
+    const draft: SearchFilterDraft = { ...EMPTY_SEARCH_FILTER_DRAFT, qualities: ['720p', '1080p'] };
+    const { props } = await renderPanel({ draft });
+    await fireEvent.press(screen.getByText('720p'));
+    expect(props.onChange).toHaveBeenLastCalledWith({ qualities: ['1080p'] });
+  });
 });

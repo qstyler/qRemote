@@ -458,6 +458,7 @@ describe('filterSearchResults', () => {
         minSizeUnit: 'MiB',
         maxSize: '2',
         maxSizeUnit: 'TiB',
+        qualities: [],
       });
       expect(opts).toEqual({
         filterText: 'x265',
@@ -465,6 +466,7 @@ describe('filterSearchResults', () => {
         maxSeeders: undefined,
         minSize: 500 * 1024 ** 2,
         maxSize: 2 * 1024 ** 4,
+        qualities: [],
       });
     });
 
@@ -474,5 +476,59 @@ describe('filterSearchResults', () => {
       expect(isDraftDirty({ ...EMPTY_SEARCH_FILTER_DRAFT, maxSize: '1' })).toBe(true);
       expect(isDraftDirty({ ...EMPTY_SEARCH_FILTER_DRAFT, minSizeUnit: 'KiB' })).toBe(false);
     });
+  });
+});
+
+describe('video quality filter (#268)', () => {
+  const make = (fileName: string): SearchResult =>
+    ({ fileName, fileUrl: fileName, fileSize: 1, nbSeeders: 1, nbLeechers: 0 }) as SearchResult;
+  const results = [
+    make('Show.S01.720p.WEB-DL'),
+    make('Show.S01.1080p.BluRay.x264'),
+    make('Show.S01.2160p.UHD.HDR'),
+    make('Show.S01.1440p'),
+    make('Show.S01.DVDRip'),
+    make('Show.S01.Complete'),
+  ];
+
+  it('keeps everything when no quality is selected', () => {
+    expect(filterSearchResults(results, { qualities: [] })).toBe(results);
+  });
+
+  it('keeps only the selected qualities', () => {
+    const out = filterSearchResults(results, { qualities: ['1080p'] });
+    expect(out.map((r) => r.fileName)).toEqual(['Show.S01.1080p.BluRay.x264']);
+  });
+
+  it('supports several qualities at once', () => {
+    const out = filterSearchResults(results, { qualities: ['1080p', '2160p'] });
+    expect(out.map((r) => r.fileName)).toEqual([
+      'Show.S01.1080p.BluRay.x264',
+      'Show.S01.2160p.UHD.HDR',
+    ]);
+  });
+
+  it('hides results with no recognizable (or an unoffered) quality while one is selected', () => {
+    const out = filterSearchResults(results, { qualities: ['720p', '1080p', '2160p'] });
+    expect(out.map((r) => r.fileName)).not.toContain('Show.S01.1440p');
+    expect(out.map((r) => r.fileName)).not.toContain('Show.S01.DVDRip');
+    expect(out.map((r) => r.fileName)).not.toContain('Show.S01.Complete');
+  });
+
+  it('combines with the other filters', () => {
+    const out = filterSearchResults(results, {
+      qualities: ['720p', '1080p'],
+      filterText: 'bluray',
+    });
+    expect(out.map((r) => r.fileName)).toEqual(['Show.S01.1080p.BluRay.x264']);
+  });
+
+  it('counts as an active filter and as a dirty draft', () => {
+    expect(hasActiveFilters({ qualities: ['720p'] })).toBe(true);
+    expect(hasActiveFilters({ qualities: [] })).toBe(false);
+    expect(isDraftDirty({ ...EMPTY_SEARCH_FILTER_DRAFT, qualities: ['2160p'] })).toBe(true);
+    expect(
+      draftToFilterOptions({ ...EMPTY_SEARCH_FILTER_DRAFT, qualities: ['2160p'] }).qualities,
+    ).toEqual(['2160p']);
   });
 });

@@ -611,6 +611,7 @@
       "sizeUnit": "Größeneinheit: {{unit}}",
       "clearFilters": "Filter zurücksetzen",
       "applyFilters": "Anwenden",
+      "videoQuality": "Videoqualität",
       "noFilterResults": "Keine Ergebnisse für die gewählten Filter",
       "addToQueue": "Zu qBittorrent hinzufügen",
       "openDescription": "Beschreibungsseite öffnen",

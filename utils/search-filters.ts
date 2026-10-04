@@ -10,6 +10,7 @@
  * out where they occur.
  */
 import { SearchResult } from '@/types/api';
+import { getVideoQualityLabel, getVideoQualityRank } from '@/utils/video-quality';
 
 /** Size units offered by the filter UI, smallest to largest (IEC, 1024-based). */
 export const SEARCH_SIZE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB'] as const;
@@ -22,6 +23,15 @@ export type SearchSizeUnit = (typeof SEARCH_SIZE_UNITS)[number];
  */
 export const DEFAULT_MIN_SIZE_UNIT: SearchSizeUnit = 'MiB';
 export const DEFAULT_MAX_SIZE_UNIT: SearchSizeUnit = 'GiB';
+
+/**
+ * Video qualities the filter offers (#268). A result matches one when its name
+ * parses to that quality (`getVideoQualityRank`); results with no recognizable
+ * quality — and ones that parse to a quality not offered, such as 1440p or SD —
+ * are hidden while any quality is selected.
+ */
+export const SEARCH_QUALITY_OPTIONS = ['720p', '1080p', '2160p'] as const;
+export type SearchQualityOption = (typeof SEARCH_QUALITY_OPTIONS)[number];
 
 export interface SearchFilterOptions {
   /**
@@ -45,6 +55,8 @@ export interface SearchFilterOptions {
   /** Inclusive size bounds in bytes. Unset / non-positive means "no bound". */
   minSize?: number;
   maxSize?: number;
+  /** Keep only results of these qualities. Empty / unset means "any". */
+  qualities?: readonly SearchQualityOption[];
 }
 
 /**
@@ -144,7 +156,8 @@ export function hasActiveFilters(opts: SearchFilterOptions = {}): boolean {
     seeders.min !== undefined ||
     seeders.max !== undefined ||
     size.min !== undefined ||
-    size.max !== undefined
+    size.max !== undefined ||
+    (opts.qualities?.length ?? 0) > 0
   );
 }
 
@@ -168,9 +181,11 @@ export function filterSearchResults(
   const filterTerms = tokenizeTerms(opts.filterText);
   const seeders = normalizeRange(opts.minSeeders, opts.maxSeeders);
   const size = normalizeRange(opts.minSize, opts.maxSize);
+  const qualities = opts.qualities ?? [];
 
   if (
     !opts.hideZeroSeeders &&
+    qualities.length === 0 &&
     nameTerms.length === 0 &&
     filterTerms.length === 0 &&
     seeders.min === undefined &&
@@ -185,6 +200,10 @@ export function filterSearchResults(
     if (opts.hideZeroSeeders && r.nbSeeders === 0) return false;
     if (nameTerms.length > 0 && !matchesAllTerms(r.fileName, nameTerms)) return false;
     if (filterTerms.length > 0 && !matchesAllTerms(r.fileName, filterTerms)) return false;
+    if (qualities.length > 0) {
+      const label = getVideoQualityLabel(getVideoQualityRank(r.fileName));
+      if (!label || !(qualities as readonly string[]).includes(label)) return false;
+    }
 
     const seedCount = r.nbSeeders;
     if (typeof seedCount === 'number' && seedCount >= 0) {
@@ -214,6 +233,7 @@ export interface SearchFilterDraft {
   minSizeUnit: SearchSizeUnit;
   maxSize: string;
   maxSizeUnit: SearchSizeUnit;
+  qualities: SearchQualityOption[];
 }
 
 export const EMPTY_SEARCH_FILTER_DRAFT: SearchFilterDraft = {
@@ -224,6 +244,7 @@ export const EMPTY_SEARCH_FILTER_DRAFT: SearchFilterDraft = {
   minSizeUnit: DEFAULT_MIN_SIZE_UNIT,
   maxSize: '',
   maxSizeUnit: DEFAULT_MAX_SIZE_UNIT,
+  qualities: [],
 };
 
 /** Parses a draft into filter options (everything but `nameTerms`/`hideZeroSeeders`). */
@@ -234,6 +255,7 @@ export function draftToFilterOptions(draft: SearchFilterDraft): SearchFilterOpti
     maxSeeders: parseSeedersInput(draft.maxSeeders),
     minSize: parseSizeInput(draft.minSize, draft.minSizeUnit),
     maxSize: parseSizeInput(draft.maxSize, draft.maxSizeUnit),
+    qualities: draft.qualities,
   };
 }
 
@@ -244,6 +266,7 @@ export function isDraftDirty(draft: SearchFilterDraft): boolean {
     draft.minSeeders !== '' ||
     draft.maxSeeders !== '' ||
     draft.minSize !== '' ||
-    draft.maxSize !== ''
+    draft.maxSize !== '' ||
+    draft.qualities.length > 0
   );
 }

@@ -636,6 +636,7 @@
       "sizeUnit": "Jednostka rozmiaru: {{unit}}",
       "clearFilters": "Wyczyść filtry",
       "applyFilters": "Zastosuj",
+      "videoQuality": "Jakość wideo",
       "noFilterResults": "Żadne wyniki nie pasują do filtrów",
       "addToQueue": "Dodaj do qBittorrent",
       "openDescription": "Otwórz stronę opisu",

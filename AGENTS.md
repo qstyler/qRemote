@@ -614,7 +614,9 @@ WebUI-parity filters `nameTerms` / `filterText` (all whitespace-separated
 terms must be in the name, case-insensitive, `-term` excludes — no quotes, no
 accent folding, same as WebUI `containsAllTerms`), seeders and size ranges
 (0/unset = no bound, swapped min/max are reordered; unlike the WebUI, unknown
-`-1`/`0` values are *kept* by a range). Also `tokenizeTerms`,
+`-1`/`0` values are *kept* by a range), and `qualities` (#268 — keep only 720p /
+1080p / 2160p names via `video-quality.ts`; unrecognized quality is hidden while
+one is selected). Also `tokenizeTerms`,
 `parseSizeInput`/`parseSeedersInput`, `hasActiveFilters`, and the
 `SearchFilterDraft` ⇄ options helpers behind `SearchFilterPanel`. Runs before
 the sort in `search.tsx`) · `search-grouping.ts` (#267 — pure Search-result

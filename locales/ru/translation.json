@@ -632,6 +632,7 @@
       "sizeUnit": "Единица размера: {{unit}}",
       "clearFilters": "Сбросить фильтры",
       "applyFilters": "Применить",
+      "videoQuality": "Качество видео",
       "noFilterResults": "Нет результатов, соответствующих фильтрам",
       "addToQueue": "Добавить в qBittorrent",
       "openDescription": "Открыть страницу описания",

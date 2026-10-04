@@ -611,6 +611,7 @@
       "sizeUnit": "大小单位：{{unit}}",
       "clearFilters": "清除筛选",
       "applyFilters": "应用",
+      "videoQuality": "视频画质",
       "noFilterResults": "没有结果匹配当前筛选条件",
       "addToQueue": "添加到 qBittorrent",
       "openDescription": "打开描述页面",

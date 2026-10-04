@@ -33,8 +33,10 @@ import { buttonStyles } from '@/constants/buttons';
 import { typography } from '@/constants/typography';
 import { SearchInMode } from '@/types/preferences';
 import {
+  SEARCH_QUALITY_OPTIONS,
   SEARCH_SIZE_UNITS,
   SearchFilterDraft,
+  SearchQualityOption,
   SearchSizeUnit,
   isDraftDirty,
 } from '@/utils/search-filters';
@@ -56,6 +58,16 @@ interface SearchFilterPanelProps {
 function nextUnit(unit: SearchSizeUnit): SearchSizeUnit {
   const i = SEARCH_SIZE_UNITS.indexOf(unit);
   return SEARCH_SIZE_UNITS[(i + 1) % SEARCH_SIZE_UNITS.length];
+}
+
+/** Adds `quality` to the selection, or removes it if already selected. */
+function toggleQuality(
+  selected: SearchQualityOption[],
+  quality: SearchQualityOption,
+): SearchQualityOption[] {
+  return selected.includes(quality)
+    ? selected.filter((q) => q !== quality)
+    : [...selected, quality];
 }
 
 export function SearchFilterPanel({
@@ -153,6 +165,20 @@ export function SearchFilterPanel({
           returnKeyType="done"
           clearButtonMode="while-editing"
         />
+
+        <Text style={labelStyle}>{t('screens.search.videoQuality')}</Text>
+        <View style={styles.row}>
+          {SEARCH_QUALITY_OPTIONS.map((quality) => (
+            <FilterChip
+              key={quality}
+              label={quality}
+              active={draft.qualities.includes(quality)}
+              numberOfLines={1}
+              style={styles.flex}
+              onPress={() => onChange({ qualities: toggleQuality(draft.qualities, quality) })}
+            />
+          ))}
+        </View>
 
         <Text style={labelStyle}>{t('screens.search.filterSeeders')}</Text>
         <View style={styles.row}>
