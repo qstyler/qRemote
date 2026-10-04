@@ -58,6 +58,7 @@ const COINCIDENTAL_MATCH_ALLOWLIST = new Set<string>([
   // their canonical form across all locales.
   'placeholders.magnetLink',
   'placeholders.trackerUrl',
+  'placeholders.quiProxyUrl',
   'screens.search.placeholder',
   'screens.search.installPluginPlaceholder',
   'screens.rss.addFeedPlaceholder',

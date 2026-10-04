@@ -85,7 +85,7 @@ export default function AdvancedSettingsScreen() {
       const exportData = {
         preferences: prefs,
         // Shared with Settings → Servers → Export: strips password,
-        // basicAuthPassword, and apiKey (re-enter after import) and keeps
+        // basicAuthPassword, apiKey, and quiProxyKey (re-enter after import) and keeps
         // everything else, including the fallback-endpoint fields the old
         // hand-rolled field list silently dropped.
         servers: servers.map(toExportedServer),
@@ -152,6 +152,7 @@ export default function AdvancedSettingsScreen() {
             password: '',
             basicAuthPassword: '',
             apiKey: '',
+            quiProxyKey: '',
             // Imports never carry secrets — same rule as utils/server-export.ts.
             customHeaders: [],
           });

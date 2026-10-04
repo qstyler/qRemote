@@ -49,6 +49,19 @@ export interface ServerConfig {
   /** qBittorrent API key, sent as `Authorization: Bearer <apiKey>` (in-memory only; stored in SecureStore). */
   apiKey?: string;
 
+  /**
+   * When true, this server is a qui Client Proxy (#272): requests go to `<basePath>/proxy/<quiProxyKey>`
+   * and there is no qBittorrent login. `host`/`port`/`useHttps`/`basePath` hold the proxy URL's own
+   * address and qui base path — see utils/quiProxy.ts. Takes precedence over `useApiKey`/`bypassAuth`.
+   */
+  useQuiProxy?: boolean;
+  /**
+   * qui Client API key — the `<key>` segment of the proxy URL (in-memory only; stored in SecureStore).
+   * It appears in request URLs, so never log a URL without utils/quiProxy.ts `redactQuiProxyKey`.
+   * A fallback endpoint reuses this same key (only its host/port/https/base path differ).
+   */
+  quiProxyKey?: string;
+
   /** Ionicons glyph name used for this server's badge (see constants/serverIcons.ts). Falls back to DEFAULT_SERVER_ICON when unset. */
   icon?: string;
   /** Hex color for the server's icon badge. Falls back to utils/server.ts avatarColor(name) when unset. */

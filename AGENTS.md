@@ -304,6 +304,18 @@ plain, but the whole `customHeaders` array is a secret (values are tokens),
 JSON-stringified into `server_custom_headers_{id}` and forced to `[]` in
 AsyncStorage.
 
+qui Client Proxy (`useQuiProxy`, #272) again: the flag is plain — **and must be
+listed in `saveServer`'s explicit field map** — while `quiProxyKey` is a secret
+in `server_qui_proxy_key_{id}`, forced to `''` in AsyncStorage (including
+`deleteServer`'s whole-list rewrite), stripped by `utils/server-export.ts`,
+kept per-device by `importServers`, and blanked in the Settings → Advanced
+settings-import path. The key is a *URL path segment*, so it can also leak
+through anything that logs a URL: every clog / thrown message / debug-report
+site in `services/api/client.ts` and `components/SuperDebugPanel.tsx` runs URLs
+through `redactQuiProxyKey` (`utils/quiProxy.ts`). The client does this only for
+requests it stamped as qui (`config.__quiProxy`), because `/proxy/<x>` is also
+a legitimate qBittorrent base path that diagnostics must keep showing.
+
 Be deliberate whenever you touch code that persists a `ServerConfig` — including
 paths that rewrite the *whole* server list, such as add, edit, delete, and
 import. A secret must never reach AsyncStorage, and bulk rewrites are the easiest
@@ -312,8 +324,25 @@ place to let one slip through.
 ### Auth modes
 
 A server's auth mode is *derived*, not stored — see `utils/authMode.ts`
-(`password` | `apiKey` | `none`). Legacy records that only ever set `bypassAuth`
-keep working; when both `useApiKey` and `bypassAuth` are set, API key wins.
+(`password` | `apiKey` | `none` | `quiProxy`). Legacy records that only ever set
+`bypassAuth` keep working; when several flags are set the more specific wins:
+**qui proxy > API key > none > password**.
+
+`quiProxy` (#272) connects through a [qui](https://getqui.com) Client Proxy URL
+`http(s)://host[:port][/qui-base]/proxy/<key>` with no username/password. There
+is no URL-path field on `ServerConfig`, so the pasted URL is parsed
+(`utils/quiProxy.ts` `parseQuiProxyUrl`) into `host`/`port`/`useHttps`/`basePath`
+(= the qui base path) plus the secret `quiProxyKey`, and `services/api/client.ts`
+re-joins `<basePath>/proxy/<key>` per request. qui's `/auth/login` is a no-op, so
+`ServerManager` takes the no-login path (like `apiKey`), skips logout on
+disconnect, sends no Bearer header (Basic Auth / custom headers still apply for
+a gateway in front of qui), and maps qui's 401 "Invalid API key" / "Missing API
+key" to `QUI_KEY_REJECTED_MESSAGE`. A qui server's fallback endpoint is a second
+qui URL for the same instance: only its host/port/HTTPS/base path are used and
+the primary's key is reused (no second secret). The add/edit forms hide
+username/password/API key and host/port/HTTPS in this mode and show one masked
+`QuiProxyUrlField`; the edit screen repopulates it with `buildQuiProxyUrl`
+(ending at `/proxy/` for an imported server whose key was stripped).
 
 ---
 
@@ -336,7 +365,7 @@ Complete map. Trust it.
 | `app/+native-intent.ts` | Suppresses Router navigation for magnet / `.torrent` URLs. |
 | `app/torrents/add.tsx` | Add-torrent flow (magnet or file, plus options). Root stack → no tab bar. Uses `PathAutocompleteInput`. |
 | `app/search/plugins.tsx` | Search plugin install/enable/uninstall (`app/search/_layout.tsx` stack). Root stack. Also linked from the Settings hub. |
-| `app/server/add.tsx`, `app/server/[id].tsx` | Server add/edit, presented as native modal sheets → they mount `<ModalToast/>` locally. |
+| `app/server/add.tsx`, `app/server/[id].tsx` | Server add/edit, presented as native modal sheets → they mount `<ModalToast/>` locally. The two are near-duplicates — a change to the form (auth methods, validation, the `ServerConfig` they build) must be made in both. `qui Proxy` auth mode (#272) swaps the host/port/HTTPS/credential fields for one `QuiProxyUrlField`. |
 
 **Settings sub-screens** — hub order on `index` is Servers → Appearance → Server
 Settings → Connection → RSS → Search Plugins → Advanced, then What's New →
@@ -442,7 +471,10 @@ All PascalCase function components taking a `…Props` interface.
   `AVATAR_PALETTE` swatches plus a "custom color" swatch that opens the full
   `ColorPicker`), `CustomHeadersSection` (per-server custom HTTP header
   key/value rows, max 5, used by the same two screens — see
-  `utils/customHeaders.ts`).
+  `utils/customHeaders.ts`), `QuiProxyUrlField` (the single masked "qui Proxy
+  URL" input — eye toggle, inline parse error, key-masked preview, hint — shown
+  by the same two screens for the `quiProxy` auth mode and for its fallback URL;
+  see `utils/quiProxy.ts`).
 - **Visuals** — `SpeedGraph`, `CircularProgress`, `AnimatedProgressBar`,
   `AnimatedButton`, `Confetti`.
 - **Chrome / diagnostics** — `FocusAwareStatusBar`, `SettingRow`,
@@ -543,7 +575,11 @@ connection timeout / retry count from raw stored preferences, falling back to
 legitimately saved `retryAttempts: 0`) ·
 `server.ts` (endpoint resolution incl. fallback URL, avatar colors, and
 `getServerIcon`/`getServerIconColor` for the per-server badge — #224) ·
-`authMode.ts` (derives `password`/`apiKey`/`none`) · `basicAuth.ts` ·
+`authMode.ts` (derives `password`/`apiKey`/`none`/`quiProxy`) · `basicAuth.ts` ·
+`quiProxy.ts` (qui Client Proxy URLs, #272 — `parseQuiProxyUrl`/`buildQuiProxyUrl`
+for the pasted `…/proxy/<key>` URL, `withQuiProxyPath` for the request path,
+`redactQuiProxyKey` for logs/errors/debug text, and the `QUI_KEY_*` messages
+`ServerManager` matches) ·
 `customHeaders.ts` (per-server custom HTTP headers — sanitize/validate, and the
 reserved-name set the app manages itself: Authorization, Cookie, Referer,
 Origin, Content-Type, Host — #228) ·
@@ -559,7 +595,7 @@ for the Search tab's `+` behavior — #217) · `search-cart.ts`
 (`groupCartItemsForAdd` — splits a `SearchCartContext` cart into one
 `torrents/add` batch per indexer when auto-tag-by-tracker is on, since that
 endpoint applies one `tags` value per request) · `server-export.ts` (strips
-`password`/`basicAuthPassword`/`apiKey` on export, forces them empty on import) ·
+`password`/`basicAuthPassword`/`apiKey`/`quiProxyKey` on export, forces them empty on import) ·
 `save-paths.ts` (`getKnownSavePaths`, derived from live data — no API call) ·
 `version.ts` (`APP_VERSION`) · `trackers.ts` (`isRealTracker` — filters
 qBittorrent's DHT/PeX/LSD pseudo-tracker entries out of `torrents/trackers`;

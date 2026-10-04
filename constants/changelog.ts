@@ -27,6 +27,7 @@ export const CHANGELOG: ChangelogRelease[] = [
         items: [
           'Added Polish language support',
           'Added a "Hide zero seeders" option to search results',
+          'Added a qui Proxy connection option for servers managed by qui',
         ],
       },
       {

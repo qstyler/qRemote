@@ -29,6 +29,7 @@ import { logsApi } from '@/services/api/logs';
 import { apiClient } from '@/services/api/client';
 import { getErrorMessage, isTlsRejection } from '@/utils/error';
 import { CustomHeaderPair, sanitizeCustomHeaders } from '@/utils/customHeaders';
+import { redactQuiProxyKey } from '@/utils/quiProxy';
 import { isLoginBodyFail, isLoginSuccess } from '@/utils/login-response';
 
 // ---------------------------------------------------------------------------
@@ -170,6 +171,14 @@ export interface SuperDebugPanelProps {
   /** Optional API key auth fields — when set, login/cookie steps are skipped and a Bearer header is sent instead. */
   useApiKey?: boolean;
   apiKey?: string;
+  /**
+   * Optional URL path appended to the origin. In qui mode (#272) this is
+   * `/<qui base>/proxy/<key>` — it embeds the secret key, so every log line and
+   * report this panel produces is redacted (see `redactOutput`).
+   */
+  basePath?: string;
+  /** qui Client Proxy (#272): login/cookie steps are skipped (qui's login is a no-op) and no Bearer header is sent. */
+  useQuiProxy?: boolean;
   /** Optional proxy Basic Auth fields — when absent, no Authorization header is sent. */
   useBasicAuth?: boolean;
   basicAuthUsername?: string;
@@ -221,6 +230,8 @@ export function SuperDebugPanel({
   bypassAuth,
   useApiKey = false,
   apiKey = '',
+  basePath = '',
+  useQuiProxy = false,
   useBasicAuth = false,
   basicAuthUsername = '',
   basicAuthPassword = '',
@@ -251,13 +262,35 @@ export function SuperDebugPanel({
     const clean = sanitizeHost(host);
     const portNum = port.trim() ? parseInt(port, 10) : undefined;
     const portPart = portNum && portNum > 0 && !isNaN(portNum) ? `:${portNum}` : '';
-    return `${protocol}://${clean}${portPart}`;
-  }, [host, port, useHttps]);
+    const trimmedPath = basePath.trim().replace(/\/+$/, '');
+    const pathPart = trimmedPath
+      ? trimmedPath.startsWith('/')
+        ? trimmedPath
+        : `/${trimmedPath}`
+      : '';
+    return `${protocol}://${clean}${portPart}${pathPart}`;
+  }, [host, port, useHttps, basePath]);
+
+  /** Mask a qui proxy key anywhere in text that is displayed, copied or exported. */
+  const redactOutput = useCallback(
+    (text: string): string => (useQuiProxy ? redactQuiProxyKey(text) : text),
+    [useQuiProxy],
+  );
+
+  /** The auth-method label used in the report headers. */
+  const authModeLabel = useQuiProxy
+    ? 'quiProxy'
+    : useApiKey
+      ? 'apiKey'
+      : bypassAuth
+        ? 'none'
+        : 'password';
 
   /** Build the Authorization header value: API key (Bearer) takes precedence
    * over proxy Basic Auth, mirroring services/api/client.ts's interceptor. */
   const buildAuthHeader = useCallback((): string | null => {
-    if (useApiKey && apiKey.trim()) {
+    // qui authenticates by the key in the URL path — never a Bearer header.
+    if (!useQuiProxy && useApiKey && apiKey.trim()) {
       return `Bearer ${apiKey.trim()}`;
     }
     if (!useBasicAuth || !basicAuthUsername.trim()) return null;
@@ -285,7 +318,7 @@ export function SuperDebugPanel({
       b64 += i + 2 < bytes.length ? BASE64[b2 & 63] : '=';
     }
     return 'Basic ' + b64;
-  }, [useApiKey, apiKey, useBasicAuth, basicAuthUsername, basicAuthPassword]);
+  }, [useQuiProxy, useApiKey, apiKey, useBasicAuth, basicAuthUsername, basicAuthPassword]);
 
   /** Serialized so an inline `customHeaders` array prop doesn't churn the
    * callbacks below on every render. */
@@ -317,6 +350,8 @@ export function SuperDebugPanel({
       password,
       useApiKey,
       apiKey,
+      basePath,
+      useQuiProxy,
       useBasicAuth,
       basicAuthUsername,
       basicAuthPassword,
@@ -331,6 +366,8 @@ export function SuperDebugPanel({
     password,
     useApiKey,
     apiKey,
+    basePath,
+    useQuiProxy,
     useBasicAuth,
     basicAuthUsername,
     basicAuthPassword,
@@ -343,14 +380,14 @@ export function SuperDebugPanel({
         id: ++idRef.current,
         timestamp: Date.now(),
         step,
-        message,
-        detail,
+        message: redactOutput(message),
+        detail: detail === undefined ? undefined : redactOutput(detail),
         status,
       };
       setLog((prev) => [...prev, entry]);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
     },
-    [],
+    [redactOutput],
   );
 
   const formatTime = (ts: number): string => {
@@ -548,7 +585,6 @@ export function SuperDebugPanel({
     addEntry('INFO', `Target: ${baseUrl}`, 'info');
     addEntry('INFO', `Platform: ${Platform.OS} ${Platform.Version}`, 'info');
     addEntry('INFO', `App: ${APP_VERSION}`, 'info');
-    const authModeLabel = useApiKey ? 'apiKey' : bypassAuth ? 'none' : 'password';
     addEntry(
       'INFO',
       `HTTPS: ${useHttps ? 'Yes' : 'No'} | Auth Method: ${authModeLabel} | Basic Auth: ${useBasicAuth ? 'Yes' : 'No'}`,
@@ -556,7 +592,7 @@ export function SuperDebugPanel({
     );
 
     let passed = 0;
-    const skipLogin = bypassAuth || useApiKey;
+    const skipLogin = bypassAuth || useApiKey || useQuiProxy;
     const totalSteps = skipLogin ? 2 : 4;
     let sessionCookie = '';
 
@@ -649,9 +685,11 @@ export function SuperDebugPanel({
       if (skipLogin) {
         addEntry(
           'INFO',
-          useApiKey
-            ? 'Steps 2-3 skipped (API key auth is stateless — no login or session cookie).'
-            : 'Steps 2-3 skipped (auth bypass enabled).',
+          useQuiProxy
+            ? 'Steps 2-3 skipped (qui proxy auth is the key in the URL — qui answers login with a no-op, so there is no real login or session cookie).'
+            : useApiKey
+              ? 'Steps 2-3 skipped (API key auth is stateless — no login or session cookie).'
+              : 'Steps 2-3 skipped (auth bypass enabled).',
           'info',
         );
       } else {
@@ -818,6 +856,13 @@ export function SuperDebugPanel({
             sessionCookie,
             authHeader,
           };
+        } else if (useQuiProxy && apiResp.status === 401) {
+          addEntry('API', `HTTP 401 — qui rejected the proxy key (${apiLatency}ms)`, 'error');
+          addEntry(
+            'WARN',
+            'qui answers 401 when the key in the proxy URL is wrong or was revoked. Create a new Client API key in qui → Settings → Client Proxy and paste the new proxy URL.',
+            'warning',
+          );
         } else if (apiResp.status === 403) {
           addEntry('API', `HTTP 403 Forbidden — Not authenticated (${apiLatency}ms)`, 'error');
           if (useApiKey) {
@@ -920,7 +965,7 @@ export function SuperDebugPanel({
       `Host: ${clean || '(empty)'}`,
       `Port: ${portNum || 'default (80/443)'}`,
       `HTTPS: ${useHttps ? 'Yes' : 'No'}`,
-      `Auth Method: ${useApiKey ? 'apiKey' : bypassAuth ? 'none' : 'password'}`,
+      `Auth Method: ${authModeLabel}`,
       `Basic Auth: ${useBasicAuth ? 'Yes' : 'No'}`,
       '',
       '--- Diagnostic Log ---',
@@ -932,7 +977,7 @@ export function SuperDebugPanel({
     }
 
     try {
-      await Clipboard.setStringAsync(lines.join('\n'));
+      await Clipboard.setStringAsync(redactOutput(lines.join('\n')));
       addEntry('INFO', 'Full report copied to clipboard.', 'success');
     } catch (err: unknown) {
       addEntry('ERROR', `Failed to copy: ${getErrorMessage(err)}`, 'error');
@@ -985,7 +1030,7 @@ export function SuperDebugPanel({
         `Host: ${clean || '(empty)'}`,
         `Port: ${portNum || 'default (80/443)'}`,
         `HTTPS: ${useHttps ? 'Yes' : 'No'}`,
-        `Auth Method: ${useApiKey ? 'apiKey' : bypassAuth ? 'none' : 'password'}`,
+        `Auth Method: ${authModeLabel}`,
         `Basic Auth: ${useBasicAuth ? 'Yes' : 'No'}`,
         `Username: ${username ? '(set)' : '(empty)'}`,
         '',
@@ -1192,15 +1237,17 @@ export function SuperDebugPanel({
       rawSection.push('');
 
       // --- Assemble ---
-      const fullReport = [
-        ...header,
-        ...configSection,
-        ...diagSection,
-        ...connectivitySection,
-        ...serverLogSection,
-        ...rawSection,
-        '═══ End of Report ═══',
-      ].join('\n');
+      const fullReport = redactOutput(
+        [
+          ...header,
+          ...configSection,
+          ...diagSection,
+          ...connectivitySection,
+          ...serverLogSection,
+          ...rawSection,
+          '═══ End of Report ═══',
+        ].join('\n'),
+      );
 
       // Write to file
       const docDir = FileSystem.documentDirectory;
